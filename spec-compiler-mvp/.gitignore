@@ -7,3 +7,6 @@ next-env.d.ts
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# MCP server bundle
+mcp/dist

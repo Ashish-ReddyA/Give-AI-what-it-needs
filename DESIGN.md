@@ -99,19 +99,34 @@ the phasing; this carries the "why."_
   validated, never regex-parsed. Effort `low` — this is a small extraction
   task. (Model tier is a cost lever the owner can lower deliberately;
   don't downgrade silently.)
-- **Key strategy — owner decision:** `ANTHROPIC_API_KEY` env var on the
-  deploy (simplest, costs land on us) vs. BYOK field in the UI (costs land
-  on users, higher friction). Default plan: env var + rate limit, revisit
-  if traffic costs bite.
+- **Key strategy — DECIDED 2026-07-23: BYOK.** The user pastes their own
+  Anthropic API key into the UI; it lives in browser `localStorage` only
+  and is never persisted server-side. Two implementation options when
+  building: direct browser → Anthropic calls (the API supports CORS via
+  the `anthropic-dangerous-direct-browser-access: true` header — keeps the
+  app fully static, key never touches our infra) or a thin pass-through
+  route. Prefer the direct-browser path: with BYOK the key is the user's
+  own, and static hosting stays possible.
 - **Fallback:** route absent/erroring → client keeps the static form.
   No feature of the app may *require* the route.
 
-## 5. The MCP server (build next — pure packaging)
+## 5. The MCP server (✅ shipped 2026-07-23)
 
-- `mcp-server/` workspace importing `lib/` directly.
-- Tools: `elicit_spec` (returns the missing-field questions for a domain),
-  `compile_spec` (spec in → per-platform prompts out).
-- stdio transport first (Claude Desktop / Claude Code), HTTP later.
+- Lives at `spec-compiler-mvp/mcp/` — pure logic in `mcp/tools.ts`
+  (unit-tested, imports `lib/` directly), thin stdio wrapper in
+  `mcp/server.ts` (`@modelcontextprotocol/sdk`).
+- Tools: `elicit_spec` (remaining questions + options + why each matters)
+  and `compile_spec` (per-platform prompts; refuses incomplete specs
+  unless `allowIncomplete: true` — the web UI's gate, preserved for
+  agents). Both return JSON with an `instructions` field so the loop is
+  self-documenting.
+- Run: `npm run mcp` (dev, tsx) or `npm run mcp:build` →
+  `node mcp/dist/server.mjs` (single-file bundle, plain node). Repo-root
+  `.mcp.json` auto-registers it for Claude Code. See `mcp/README.md`.
+- Verified end-to-end: integration tests spawn the real stdio server and
+  drive it with the official MCP client; the built bundle is smoke-tested
+  with plain node.
+- HTTP transport: later, if remote use materializes.
 - This is the differentiated distribution: the elicitation engine becomes
   something *other agents call*, riding the ecosystem instead of fighting
   for a bookmark.

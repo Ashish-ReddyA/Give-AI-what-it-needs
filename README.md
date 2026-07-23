@@ -11,7 +11,9 @@ compile that spec into whatever the downstream tool actually wants.
 
 | Path | What it is |
 |------|-----------|
-| [`spec-compiler-mvp/`](./spec-compiler-mvp) | **Phase 1 MVP** — a working Next.js app for the image-generation domain. Ask 4 questions → get one compiled prompt per platform (Midjourney / DALL·E / Higgsfield). |
+| [`spec-compiler-mvp/`](./spec-compiler-mvp) | The working Next.js app — **image + video** domains. Answer a few questions → get one compiled prompt per platform (image: Midjourney / DALL·E / Higgsfield · video: Higgsfield / Veo 3 / Runway). |
+| [`spec-compiler-mvp/mcp/`](./spec-compiler-mvp/mcp) | **MCP server** — the same elicit → compile loop as tools (`elicit_spec`, `compile_spec`) for Claude Code / Claude Desktop / any MCP agent. `.mcp.json` at this repo's root auto-registers it for Claude Code. |
+| [`DESIGN.md`](./DESIGN.md) | The v1 critique, the four locked product decisions, and the target architecture. |
 | [`ROADMAP.md`](./ROADMAP.md) | Project status + what to build next. **Start here** if you're deciding what to work on. |
 
 ## Quick start

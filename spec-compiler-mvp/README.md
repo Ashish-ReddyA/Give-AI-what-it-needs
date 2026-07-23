@@ -68,9 +68,16 @@ an optional `/api/analyze` route in Phase 2a.
 - **Style descriptors never smuggle in composition.** No more forced
   "shallow depth of field" on every realistic request.
 
+## The MCP server
+
+The same elicit → compile loop is exposed as MCP tools in [`mcp/`](./mcp)
+(`elicit_spec`, `compile_spec`) so agents can run it in-chat. `npm run mcp`
+for dev, `npm run mcp:build` for a single-file `node`-runnable bundle —
+see [`mcp/README.md`](./mcp/README.md) for Claude Code / Desktop setup.
+`npm test` covers it, including an end-to-end stdio integration test.
+
 ## What's deliberately NOT here (see ROADMAP.md before adding)
 
-- LLM idea-parsing / dynamic questions — Phase 2a, needs an API-key decision
-- MCP server packaging — Phase 2b
+- LLM idea-parsing / dynamic questions — Phase 2a (BYOK decided; buildable)
 - Persistence + outcome logging — Phase 1.5
 - Requirement Graph Engine, coding domain, accounts — gated on validation

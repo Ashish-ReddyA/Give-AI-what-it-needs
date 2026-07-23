@@ -132,9 +132,9 @@ intake helps and want an end-to-end demo.
 |-------|-------|-------|--------|
 | 0 | Housekeeping | Code in git, README, roadmap | ✅ 2026-07-23 |
 | **1.25** | **Design-review hardening** | **Video domain (Higgsfield/Veo/Runway) · compiler correctness fixes (MJ v7, conditional `--style raw`, negation-aware routing) · dated platform knowledge (`lib/platforms.ts`) · honest meter + coherent compile gate · 32 unit tests · ESLint** | ✅ 2026-07-23 |
-| 1.5 | Measure + ship | localStorage persistence + outcome log + one stat · **deploy publicly (Vercel)** · share to communities | ⭐ next — needs owner's Vercel account |
-| 2a | LLM intake | `/api/analyze`: Claude parses the idea → pre-fills fields + next-best question, graceful fallback (see DESIGN.md §4) | needs owner's API-key decision |
-| 2b | MCP server | `elicit_spec` / `compile_spec` over stdio; agents run the flow in-chat (DESIGN.md §5) | pure packaging of `lib/` |
+| 1.5 | Measure + ship | localStorage persistence + outcome log + one stat · **deploy publicly (Vercel)** · share to communities | ⭐ next — owner will handle deploy account |
+| 2a | LLM intake | **BYOK (decided 2026-07-23)**: user's key in localStorage, Claude parses the idea → pre-fills fields + next-best question, graceful fallback (DESIGN.md §4) | unblocked — buildable now |
+| 2b | MCP server | `elicit_spec` / `compile_spec` over stdio; agents run the flow in-chat (DESIGN.md §5, `spec-compiler-mvp/mcp/`) | ✅ 2026-07-23 |
 | 3 | Close the retry loop | "What went wrong?" → compiled refinement per platform | after 1.5 instruments outcomes |
 | 4 | New domain | Intent classifier + the **coding** wedge | after image+video validates |
 | 5 | Product | Accounts, saved specs, sharing | when someone asks to log in |
@@ -145,11 +145,11 @@ next-question approximation (2a) proves the concept.
 
 ---
 
-## 4. Decisions needed from the owner (blocking the next phases)
-- **Deploy target + account** (Phase 1.5): Vercel is the zero-config choice
-  for this stack — needs your account, takes minutes.
-- **API key strategy** (Phase 2a): `ANTHROPIC_API_KEY` on the deploy (costs
-  land on you, zero user friction) vs. BYOK (costs land on users). DESIGN.md
-  recommends env-var + rate limit first.
-- **Where to announce** (Phase 1.5): which communities you're comfortable
-  posting to — r/midjourney, AI-video Discords, X.
+## 4. Owner decisions (recorded 2026-07-23)
+- **Deploy target + account** (Phase 1.5): owner will set up the deploy
+  (Vercel) after the current build phases. Note: with BYOK there is no
+  server-side secret, so a fully static deploy is possible.
+- **API key strategy** (Phase 2a): **BYOK** — the user pastes their own
+  Anthropic key, stored in browser localStorage only. See DESIGN.md §4.
+- **Where to announce** (Phase 1.5): **all channels** — r/midjourney,
+  AI-video Discords, and X.

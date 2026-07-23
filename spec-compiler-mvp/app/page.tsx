@@ -15,10 +15,16 @@ import {
 } from "@/lib/completeness";
 import { compileAll } from "@/lib/compilers";
 import { compileAllVideo } from "@/lib/compilers-video";
+import {
+  Analysis,
+  mergeImageAnalysis,
+  mergeVideoAnalysis,
+} from "@/lib/analyze-core";
 import QuestionFlow from "@/components/QuestionFlow";
 import VideoQuestionFlow from "@/components/VideoQuestionFlow";
 import CompletenessMeter from "@/components/CompletenessMeter";
 import ResultsPanel from "@/components/ResultsPanel";
+import AssistPanel from "@/components/AssistPanel";
 
 export default function Home() {
   const [domain, setDomain] = useState<Domain>("image");
@@ -49,6 +55,18 @@ export default function Home() {
     if (!showResults) return [];
     return domain === "image" ? compileAll(imageSpec) : compileAllVideo(videoSpec);
   }, [showResults, domain, imageSpec, videoSpec]);
+
+  // AI assist fills only empty fields — the user's explicit picks always win.
+  const handleAnalysis = (a: Analysis): { filled: string[] } => {
+    if (a.domain === "image") {
+      const { spec, filled } = mergeImageAnalysis(imageSpec, a);
+      setImageSpec(spec);
+      return { filled };
+    }
+    const { spec, filled } = mergeVideoAnalysis(videoSpec, a);
+    setVideoSpec(spec);
+    return { filled };
+  };
 
   return (
     <main className="min-h-screen px-4 py-10 sm:py-16">
@@ -100,6 +118,14 @@ export default function Home() {
         </section>
 
         <section className="mb-6">
+          <AssistPanel
+            domain={domain}
+            spec={domain === "image" ? imageSpec : videoSpec}
+            onAnalysis={handleAnalysis}
+          />
+        </section>
+
+        <section className="mb-6">
           <CompletenessMeter result={completeness} />
         </section>
 
@@ -124,8 +150,8 @@ export default function Home() {
 
         <footer className="mt-12 pt-4 border-t border-line">
           <p className="font-mono text-[11px] text-inkMuted">
-            Image + video domains, deterministic compilers. LLM-assisted
-            intake and MCP server are next — see ROADMAP.md.
+            Deterministic compilers · optional BYOK AI assist · also an MCP
+            server (mcp/). Persistence + public deploy next — see ROADMAP.md.
           </p>
         </footer>
       </div>

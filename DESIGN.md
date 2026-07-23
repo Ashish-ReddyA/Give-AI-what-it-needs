@@ -89,16 +89,28 @@ the phasing; this carries the "why."_
   This is both the killer feature and the instrumentation that finally
   measures "regenerations avoided."
 
-## 4. The LLM layer (build next — needs a key decision)
+## 4. The LLM layer (✅ shipped 2026-07-23)
 
-- **Surface:** one Next.js route, `POST /api/analyze`,
-  `{ domain, idea } → { partialSpec, nextQuestion }`.
+- **Surface:** no server route at all — BYOK made it client-only. The
+  AssistPanel dynamically imports `lib/analyze.ts`, which calls Anthropic
+  **directly from the browser** with the user's key
+  (`dangerouslyAllowBrowser` sets the CORS opt-in header). The app stays
+  fully static; the SDK lives in a lazy chunk (~200 kB, loaded on first
+  use only).
 - **SDK:** `@anthropic-ai/sdk`, model `claude-opus-4-8`, **structured
-  outputs** (`output_config.format` with a JSON schema mirroring
-  `ImageSpec`/`VideoSpec` + a `nextQuestion` field) so the response is
-  validated, never regex-parsed. Effort `low` — this is a small extraction
-  task. (Model tier is a cost lever the owner can lower deliberately;
-  don't downgrade silently.)
+  outputs** via `messages.parse()` + `zodOutputFormat` (zod v4 schemas —
+  the SDK helper requires them) so the response is schema-validated,
+  never regex-parsed. `stop_reason: "refusal"` handled explicitly.
+- **Behavior:** extraction is deliberately conservative — the system
+  prompt forbids inventing fields ("a bare platform name is NOT enough"),
+  already-answered fields travel with the request so they're never
+  re-extracted or re-asked, and `mergeAnalysis` fills **empty fields
+  only** — the user's explicit picks always win. `nextQuestion` returns
+  the single highest-leverage question tailored to the idea.
+- **Tests:** merge invariants + wire-level tests with a mocked fetch
+  asserting the exact request (key header, browser-access header, model,
+  JSON-schema output config, alreadyAnswered context) and the parse/
+  refusal paths.
 - **Key strategy — DECIDED 2026-07-23: BYOK.** The user pastes their own
   Anthropic API key into the UI; it lives in browser `localStorage` only
   and is never persisted server-side. Two implementation options when

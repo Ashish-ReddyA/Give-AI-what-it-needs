@@ -47,10 +47,31 @@ components/             fields (shared primitives) · QuestionFlow ·
 app/page.tsx            domain toggle + state + the compile gate
 ```
 
-No backend, no database, no LLM call anywhere **yet** — the compilers are
-pure template functions, and that's permanent (deterministic core,
-intelligent edges — see DESIGN.md §3). The LLM-assisted intake arrives as
-an optional `/api/analyze` route in Phase 2a.
+No backend, no database. The compilers are pure template functions, and
+that's permanent (deterministic core, intelligent edges — see DESIGN.md §3).
+The one LLM call in the app is the optional **AI assist** below — and it
+runs in the user's browser, not on a server.
+
+## AI assist (BYOK)
+
+Paste your own Anthropic API key into the AI assist panel and one Claude
+call (`claude-opus-4-8`, structured outputs) parses your idea to pre-fill
+the fields it already answers — so the form never re-asks what you typed —
+and suggests the next best question, tailored to the idea.
+
+- **The key never leaves your browser** except to `api.anthropic.com`
+  directly (localStorage + the SDK's browser CORS opt-in). There is no
+  server to send it to.
+- **It only fills empty fields** — your explicit picks are never
+  overwritten, and extraction is deliberately conservative (it won't guess
+  a format from "for Instagram").
+- **Fully optional** — without a key the app is the same static form.
+
+```
+lib/analyze-core.ts     types + merge logic (fills empty fields only) — no SDK
+lib/analyze.ts          the one Claude call (dynamically imported, lazy chunk)
+components/AssistPanel  key management + pre-fill button + next-question hint
+```
 
 ## Design decisions worth knowing
 
@@ -78,6 +99,5 @@ see [`mcp/README.md`](./mcp/README.md) for Claude Code / Desktop setup.
 
 ## What's deliberately NOT here (see ROADMAP.md before adding)
 
-- LLM idea-parsing / dynamic questions — Phase 2a (BYOK decided; buildable)
 - Persistence + outcome logging — Phase 1.5
 - Requirement Graph Engine, coding domain, accounts — gated on validation

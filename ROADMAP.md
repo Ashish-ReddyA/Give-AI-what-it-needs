@@ -133,7 +133,7 @@ intake helps and want an end-to-end demo.
 | 0 | Housekeeping | Code in git, README, roadmap | ✅ 2026-07-23 |
 | **1.25** | **Design-review hardening** | **Video domain (Higgsfield/Veo/Runway) · compiler correctness fixes (MJ v7, conditional `--style raw`, negation-aware routing) · dated platform knowledge (`lib/platforms.ts`) · honest meter + coherent compile gate · 32 unit tests · ESLint** | ✅ 2026-07-23 |
 | 1.5 | Measure + ship | localStorage persistence + outcome log + one stat · **deploy publicly (Vercel)** · share to communities | ⭐ next — owner will handle deploy account |
-| 2a | LLM intake | **BYOK (decided 2026-07-23)**: user's key in localStorage, Claude parses the idea → pre-fills fields + next-best question, graceful fallback (DESIGN.md §4) | unblocked — buildable now |
+| 2a | LLM intake | BYOK: user's key in localStorage, browser → Anthropic directly (no backend), Claude pre-fills fields + next-best question, fills empty fields only, graceful fallback (DESIGN.md §4) | ✅ 2026-07-23 |
 | 2b | MCP server | `elicit_spec` / `compile_spec` over stdio; agents run the flow in-chat (DESIGN.md §5, `spec-compiler-mvp/mcp/`) | ✅ 2026-07-23 |
 | 3 | Close the retry loop | "What went wrong?" → compiled refinement per platform | after 1.5 instruments outcomes |
 | 4 | New domain | Intent classifier + the **coding** wedge | after image+video validates |

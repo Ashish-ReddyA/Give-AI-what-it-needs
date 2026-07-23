@@ -41,10 +41,15 @@ lib/completeness.ts     scoreSpec(spec, fields) — generic over domain;
                         says exactly that — no fake credit math)
 lib/compilers.ts        Midjourney / DALL·E / Higgsfield (image)
 lib/compilers-video.ts  Higgsfield / Veo 3 / Runway (video)
+lib/outcomes.ts         outcome log types + summarizeOutcomes() — the
+                        hypothesis math (complete vs incomplete specs)
+lib/store.ts            localStorage persistence, defensively sanitized
+                        field-by-field on load (corrupt data → defaults)
 lib/__tests__/          vitest suite for all of the above
 components/             fields (shared primitives) · QuestionFlow ·
-                        VideoQuestionFlow · CompletenessMeter · ResultsPanel
-app/page.tsx            domain toggle + state + the compile gate
+                        VideoQuestionFlow · CompletenessMeter ·
+                        ResultsPanel · OutcomeTracker · OutcomeStats
+app/page.tsx            domain toggle + state + persistence + compile gate
 ```
 
 No backend, no database. The compilers are pure template functions, and
@@ -97,7 +102,28 @@ for dev, `npm run mcp:build` for a single-file `node`-runnable bundle —
 see [`mcp/README.md`](./mcp/README.md) for Claude Code / Desktop setup.
 `npm test` covers it, including an end-to-end stdio integration test.
 
+## The outcome log
+
+The product's one claim is "answering questions upfront cuts wasted
+generations" — and the app now measures that claim about itself:
+
+1. Copying a prompt opens a **pending outcome** (it survives refresh —
+   you leave to generate and come back).
+2. One tap records the result: *first try / 1 / 2 / 3+ regens / abandoned*.
+3. The stats panel compares **complete vs. incomplete specs** — average
+   regens and first-try rate per bucket, with AI-assisted specs broken out.
+
+Honesty rules: "3+" is floored to 3 (understates bad outcomes — the safe
+direction to be wrong in), abandoned runs are counted separately rather
+than polluting the averages, and the panel says "small sample" until both
+buckets have n≥5. Everything is local to your browser; nothing is sent
+anywhere.
+
+Dogfood it for a week, then read one screen: either the intake cuts
+regens or it doesn't — and either answer decides what gets built next
+(see ROADMAP.md).
+
 ## What's deliberately NOT here (see ROADMAP.md before adding)
 
-- Persistence + outcome logging — Phase 1.5
+- Refinement compile after a failed run ("what went wrong?") — Phase 3
 - Requirement Graph Engine, coding domain, accounts — gated on validation

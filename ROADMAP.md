@@ -75,10 +75,11 @@ proves itself with real use:
 - ~~No test suite.~~ ✅ Closed in Phase 1.25 — 32 vitest unit tests on the
   pure-function core.
 - ~~No ESLint config.~~ ✅ Closed in Phase 1.25 (`next/core-web-vitals`).
-- No persistence — refreshing the page loses the spec, which makes the
-  dogfooding the README asks for actively painful.
-- No instrumentation — there is no way to measure the one thing the product
-  claims to improve (regenerations avoided).
+- ~~No persistence.~~ ✅ Closed in Phase 1.5 — specs, domain, and pending
+  outcomes survive refresh (localStorage, defensively sanitized on load).
+- ~~No instrumentation.~~ ✅ Closed in Phase 1.5 — the outcome log records
+  one-tap results per copied prompt and compares complete vs. incomplete
+  specs: the hypothesis test the product was missing.
 
 ---
 
@@ -132,7 +133,7 @@ intake helps and want an end-to-end demo.
 |-------|-------|-------|--------|
 | 0 | Housekeeping | Code in git, README, roadmap | ✅ 2026-07-23 |
 | **1.25** | **Design-review hardening** | **Video domain (Higgsfield/Veo/Runway) · compiler correctness fixes (MJ v7, conditional `--style raw`, negation-aware routing) · dated platform knowledge (`lib/platforms.ts`) · honest meter + coherent compile gate · 32 unit tests · ESLint** | ✅ 2026-07-23 |
-| 1.5 | Measure + ship | localStorage persistence + outcome log + one stat · **deploy publicly (Vercel)** · share to communities | ⭐ next — owner will handle deploy account |
+| 1.5 | Measure + ship | localStorage persistence + outcome log + one honest stat (complete vs incomplete specs) — verified with a browser e2e smoke · **deploy publicly (Vercel)** · share to communities | ✅ build 2026-07-23 — deploy + announce are the owner's move |
 | 2a | LLM intake | BYOK: user's key in localStorage, browser → Anthropic directly (no backend), Claude pre-fills fields + next-best question, fills empty fields only, graceful fallback (DESIGN.md §4) | ✅ 2026-07-23 |
 | 2b | MCP server | `elicit_spec` / `compile_spec` over stdio; agents run the flow in-chat (DESIGN.md §5, `spec-compiler-mvp/mcp/`) | ✅ 2026-07-23 |
 | 3 | Close the retry loop | "What went wrong?" → compiled refinement per platform | after 1.5 instruments outcomes |

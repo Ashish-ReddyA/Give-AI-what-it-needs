@@ -4,7 +4,13 @@ import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { CompiledPrompt } from "@/lib/types";
 
-function ReceiptCard({ result }: { result: CompiledPrompt }) {
+function ReceiptCard({
+  result,
+  onCopied,
+}: {
+  result: CompiledPrompt;
+  onCopied?: (platform: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -12,6 +18,9 @@ function ReceiptCard({ result }: { result: CompiledPrompt }) {
       await navigator.clipboard.writeText(result.prompt);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+      // A successful copy is the "about to spend credits" moment — this is
+      // what starts an outcome-tracking entry.
+      onCopied?.(result.platform);
     } catch {
       // clipboard access can fail in some environments — fail silently,
       // the text is still selectable/visible.
@@ -69,8 +78,10 @@ function ReceiptCard({ result }: { result: CompiledPrompt }) {
 
 export default function ResultsPanel({
   results,
+  onCopy,
 }: {
   results: CompiledPrompt[];
+  onCopy?: (platform: string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -79,7 +90,7 @@ export default function ResultsPanel({
       </span>
       <div className="grid gap-4 sm:grid-cols-1">
         {results.map((r) => (
-          <ReceiptCard key={r.platform} result={r} />
+          <ReceiptCard key={r.platform} result={r} onCopied={onCopy} />
         ))}
       </div>
     </div>

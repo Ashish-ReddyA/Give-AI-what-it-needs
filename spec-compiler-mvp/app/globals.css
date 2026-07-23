@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #EFEDE4;
+  color: #1C1B17;
+}
+
+/* Dashed "perforated tear" edge used on receipt cards */
+.perforated-top {
+  position: relative;
+}
+.perforated-top::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #d8d3c4,
+    #d8d3c4 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+/* Small notches on either side of a receipt card, like torn paper */
+.receipt-card {
+  clip-path: polygon(
+    0% 4px, 4px 0%, calc(100% - 4px) 0%, 100% 4px,
+    100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0% calc(100% - 4px)
+  );
+}

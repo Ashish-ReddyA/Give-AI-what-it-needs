@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.env*.local
+*.log
+next-env.d.ts
+
+# TypeScript incremental build info
+*.tsbuildinfo

@@ -2,61 +2,16 @@
 
 import {
   ImageSpec,
-  ImageFormat,
+  AspectFormat,
   ImageStyle,
   FORMAT_LABELS,
   STYLE_LABELS,
 } from "@/lib/types";
+import { FieldLabel, ChoiceButton, TextField } from "./fields";
 
 interface Props {
   spec: ImageSpec;
   onChange: (next: ImageSpec) => void;
-}
-
-function FieldLabel({
-  number,
-  children,
-  optional,
-}: {
-  number: string;
-  children: React.ReactNode;
-  optional?: boolean;
-}) {
-  return (
-    <div className="flex items-baseline gap-2 mb-2">
-      <span className="font-mono text-xs text-inkMuted">{number}</span>
-      <h3 className="font-display font-medium text-sm uppercase tracking-wide text-ink">
-        {children}
-      </h3>
-      {optional && (
-        <span className="font-mono text-[10px] text-inkMuted">optional</span>
-      )}
-    </div>
-  );
-}
-
-function ChoiceButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-3 py-2 text-sm font-mono border rounded-sm transition-colors text-left ${
-        active
-          ? "bg-ink text-paperRaised border-ink"
-          : "bg-paperRaised text-ink border-line hover:border-ink"
-      }`}
-    >
-      {children}
-    </button>
-  );
 }
 
 export default function QuestionFlow({ spec, onChange }: Props) {
@@ -79,7 +34,7 @@ export default function QuestionFlow({ spec, onChange }: Props) {
       <div>
         <FieldLabel number="01">Format</FieldLabel>
         <div className="grid grid-cols-3 gap-2 mb-2">
-          {(Object.keys(FORMAT_LABELS) as ImageFormat[]).map((f) => (
+          {(Object.keys(FORMAT_LABELS) as AspectFormat[]).map((f) => (
             <ChoiceButton
               key={f}
               active={spec.format === f}
@@ -115,13 +70,12 @@ export default function QuestionFlow({ spec, onChange }: Props) {
       <div>
         <FieldLabel number="03">Non-negotiable detail</FieldLabel>
         <p className="text-xs text-inkMuted mb-2 font-body">
-          The one thing that ruins this if it's missing or wrong.
+          The one thing that ruins this if it&apos;s missing or wrong.
         </p>
-        <input
+        <TextField
           value={spec.nonNegotiable}
-          onChange={(e) => set("nonNegotiable", e.target.value)}
+          onChange={(v) => set("nonNegotiable", v)}
           placeholder="e.g. must be an orange tabby cat"
-          className="w-full bg-paperRaised border border-line rounded-sm px-3 py-2 text-sm font-body text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
         />
       </div>
 
@@ -129,11 +83,10 @@ export default function QuestionFlow({ spec, onChange }: Props) {
         <FieldLabel number="04" optional>
           Exclusions
         </FieldLabel>
-        <input
+        <TextField
           value={spec.exclusions}
-          onChange={(e) => set("exclusions", e.target.value)}
+          onChange={(v) => set("exclusions", v)}
           placeholder="comma-separated, e.g. text, watermark"
-          className="w-full bg-paperRaised border border-line rounded-sm px-3 py-2 text-sm font-body text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
         />
       </div>
     </div>

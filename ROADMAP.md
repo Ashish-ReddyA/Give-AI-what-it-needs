@@ -1,9 +1,16 @@
 # Project Status & Roadmap
 
-_Last updated: 2026-07-23_
+_Last updated: 2026-07-23 (v2 — after the design review; see DESIGN.md)_
 
 This is the "where are we / what's next" document. It's grounded in the code
 actually in the repo, not in intentions.
+
+> **2026-07-23 design review:** the v1 plan below was critiqued and four
+> product decisions were locked — image+video wedge, LLM-with-fallback
+> intelligence, web+MCP distribution, real-users-ASAP goal. DESIGN.md has
+> the critique and target architecture. Phase 1.25 shipped the same day;
+> the phase table in §3 reflects the v2 plan. Sections 1–2 below describe
+> the v1 state and are kept for history.
 
 ---
 
@@ -65,9 +72,9 @@ proves itself with real use:
 - **Real generation calls** — it compiles prompts, it doesn't call any image API.
 
 ### Known gaps in the MVP itself (cheap to close, not blocking)
-- No test suite. The compilers and `scoreSpec()` are pure functions — ideal
-  for a handful of unit tests, currently zero.
-- No ESLint config (`next lint` drops into interactive setup).
+- ~~No test suite.~~ ✅ Closed in Phase 1.25 — 32 vitest unit tests on the
+  pure-function core.
+- ~~No ESLint config.~~ ✅ Closed in Phase 1.25 (`next/core-web-vitals`).
 - No persistence — refreshing the page loses the spec, which makes the
   dogfooding the README asks for actively painful.
 - No instrumentation — there is no way to measure the one thing the product
@@ -119,30 +126,30 @@ intake helps and want an end-to-end demo.
 
 ---
 
-## 3. Phased roadmap
+## 3. Phased roadmap (v2 — post design review)
 
 | Phase | Theme | Ships | Status |
 |-------|-------|-------|--------|
-| 0 | Housekeeping | Code in git, README, roadmap | ✅ this change |
-| **1.5** | **Measure the loop** | **localStorage persistence + outcome log + one stat** | **⭐ recommended next** |
-| 2a | Close the loop | Real generation via Higgsfield MCP | after 1.5 (or if validating end-to-end) |
-| 2b | Deepen intake | Level 2 questions, gated by what 1.5 reveals | data-dependent |
-| 3 | Dynamic questions | Requirement Graph Engine (questions adapt to answers) | after Level 2 earns it |
-| 4 | New domain | Intent classifier + the **coding** wedge | after image gen validates |
-| 5 | Product | Accounts, saved specs, sharing | when there's a reason to log in |
+| 0 | Housekeeping | Code in git, README, roadmap | ✅ 2026-07-23 |
+| **1.25** | **Design-review hardening** | **Video domain (Higgsfield/Veo/Runway) · compiler correctness fixes (MJ v7, conditional `--style raw`, negation-aware routing) · dated platform knowledge (`lib/platforms.ts`) · honest meter + coherent compile gate · 32 unit tests · ESLint** | ✅ 2026-07-23 |
+| 1.5 | Measure + ship | localStorage persistence + outcome log + one stat · **deploy publicly (Vercel)** · share to communities | ⭐ next — needs owner's Vercel account |
+| 2a | LLM intake | `/api/analyze`: Claude parses the idea → pre-fills fields + next-best question, graceful fallback (see DESIGN.md §4) | needs owner's API-key decision |
+| 2b | MCP server | `elicit_spec` / `compile_spec` over stdio; agents run the flow in-chat (DESIGN.md §5) | pure packaging of `lib/` |
+| 3 | Close the retry loop | "What went wrong?" → compiled refinement per platform | after 1.5 instruments outcomes |
+| 4 | New domain | Intent classifier + the **coding** wedge | after image+video validates |
+| 5 | Product | Accounts, saved specs, sharing | when someone asks to log in |
 
-Guardrail: **each phase is gated by the previous one producing signal.** The
-fastest way to waste this project is to build the Graph Engine (Phase 3) before
-knowing whether four fixed questions even help (Phase 1.5).
+Guardrail unchanged: **each phase is gated by the previous one producing
+signal.** The Requirement Graph Engine stays unbuilt until the LLM
+next-question approximation (2a) proves the concept.
 
 ---
 
-## 4. Decisions worth a human call
-- **Persistence vs. real generation as the next build.** Recommendation above
-  is persistence/measurement; flip it only if you specifically want an
-  end-to-end demo now.
-- **Is image gen still the right wedge**, or should the coding domain (the
-  original idea) move up? The MVP was scoped to image gen to be shippable; the
-  data from Phase 1.5 is what should decide this, not a hunch.
-- **Tests + lint now or later.** Cheap insurance given the pure-function core;
-  worth a half-day before the code grows.
+## 4. Decisions needed from the owner (blocking the next phases)
+- **Deploy target + account** (Phase 1.5): Vercel is the zero-config choice
+  for this stack — needs your account, takes minutes.
+- **API key strategy** (Phase 2a): `ANTHROPIC_API_KEY` on the deploy (costs
+  land on you, zero user friction) vs. BYOK (costs land on users). DESIGN.md
+  recommends env-var + rate limit first.
+- **Where to announce** (Phase 1.5): which communities you're comfortable
+  posting to — r/midjourney, AI-video Discords, X.

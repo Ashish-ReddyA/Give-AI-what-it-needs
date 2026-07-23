@@ -4,9 +4,18 @@ import {
   STYLE_LABELS,
   CompiledPrompt,
 } from "./types";
+import {
+  KNOWLEDGE_VERIFIED,
+  MIDJOURNEY,
+  HIGGSFIELD_IMAGE_MODELS,
+} from "./platforms";
 
+// Style descriptors are deliberately subject-neutral. v1 appended
+// "shallow depth of field" to every realistic request — an opinionated
+// camera choice that actively ruins landscapes/architecture. Descriptors
+// must never smuggle in a compositional decision the user didn't make.
 const STYLE_DESCRIPTORS: Record<string, string> = {
-  realistic: "photorealistic, natural lighting, shallow depth of field",
+  realistic: "photorealistic, natural lighting",
   anime: "anime style, clean linework, cel shading",
   "3d": "3D render, studio lighting, soft shadows",
   illustration: "digital illustration, painterly detail",
@@ -16,15 +25,37 @@ function styleDescriptor(spec: ImageSpec): string {
   return spec.style ? STYLE_DESCRIPTORS[spec.style] : "";
 }
 
-function exclusionList(spec: ImageSpec): string[] {
-  return spec.exclusions
+export function exclusionList(raw: string): string[] {
+  return raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
+/**
+ * Does the spec require the model to RENDER text/logo/lettering?
+ * "must say OPEN 24/7" → yes. "no text anywhere" → no — that's an
+ * exclusion sentiment, and v1's naive substring check routed it to the
+ * text-rendering model, the exact opposite of what the user asked for.
+ */
+export function wantsRenderedText(nonNegotiable: string): boolean {
+  const lower = nonNegotiable.toLowerCase();
+  const TEXTY = /(text|logo|word|letter|typograph|caption|sign(?:age)?)/;
+  if (!TEXTY.test(lower)) return false;
+  // Strip negated mentions ("no text", "without any logo", "avoid words"),
+  // then re-test what's left.
+  const stripped = lower.replace(
+    /\b(?:no|without|avoid|zero)\s+(?:any\s+)?(?:visible\s+)?\w*\s*(?:text|logos?|words?|lettering|typography|captions?|sign(?:age|s)?)/g,
+    ""
+  );
+  return TEXTY.test(stripped);
+}
+
 // ---------- Midjourney ----------
-// Comma-separated descriptors + parameter flags (--ar, --no, --style, --v)
+// Comma-separated descriptors + parameter flags (--ar, --no, --v).
+// --style raw only when the user picked realistic: raw disables MJ's
+// beautification, which suits photographic control but is the wrong
+// default for anime/illustration (v1 forced it on everything).
 export function compileMidjourney(spec: ImageSpec): CompiledPrompt {
   const parts = [spec.idea.trim()];
   if (spec.nonNegotiable.trim()) parts.push(spec.nonNegotiable.trim());
@@ -33,9 +64,10 @@ export function compileMidjourney(spec: ImageSpec): CompiledPrompt {
 
   const flags: string[] = [];
   if (spec.format) flags.push(`--ar ${FORMAT_RATIOS[spec.format]}`);
-  const exclusions = exclusionList(spec);
+  const exclusions = exclusionList(spec.exclusions);
   if (exclusions.length) flags.push(`--no ${exclusions.join(", ")}`);
-  flags.push("--style raw", "--v 6");
+  if (spec.style === "realistic") flags.push("--style raw");
+  flags.push(`--v ${MIDJOURNEY.version}`);
 
   const prompt = [parts.filter(Boolean).join(", "), flags.join(" ")]
     .filter(Boolean)
@@ -43,7 +75,7 @@ export function compileMidjourney(spec: ImageSpec): CompiledPrompt {
 
   return {
     platform: "Midjourney",
-    note: "Parameter flags carry format and exclusions — Midjourney doesn't read those as prose.",
+    note: `Flags carry format and exclusions — Midjourney doesn't read those as prose. Params verified ${KNOWLEDGE_VERIFIED}.`,
     prompt,
   };
 }
@@ -73,7 +105,7 @@ export function compileDalle(spec: ImageSpec): CompiledPrompt {
     sentences.push(`Use a ${spec.format} composition.`);
   }
 
-  const exclusions = exclusionList(spec);
+  const exclusions = exclusionList(spec.exclusions);
   if (exclusions.length) {
     sentences.push(`Do not include ${exclusions.join(" or ")}.`);
   }
@@ -87,34 +119,19 @@ export function compileDalle(spec: ImageSpec): CompiledPrompt {
 
 // ---------- Higgsfield ----------
 // Multi-model aggregator: the compiler has to pick a model, not just
-// format a string. This is a simple, explainable heuristic — swap in
-// something smarter once you have real usage data.
-function chooseHiggsfieldModel(spec: ImageSpec): { model: string; why: string } {
-  const nonNeg = spec.nonNegotiable.toLowerCase();
-  const excl = spec.exclusions.toLowerCase();
-
-  if (nonNeg.includes("text") || nonNeg.includes("logo") || nonNeg.includes("word")) {
-    return {
-      model: "GPT Image 2",
-      why: "the non-negotiable detail involves exact text/logo rendering",
-    };
+// format a string. Routing table lives in platforms.ts with a verified
+// date; swap the heuristic for real usage data once the outcome log exists.
+export function chooseHiggsfieldModel(spec: ImageSpec) {
+  if (wantsRenderedText(spec.nonNegotiable)) {
+    return HIGGSFIELD_IMAGE_MODELS.text;
   }
   if (spec.style === "realistic") {
-    return {
-      model: "Seedream",
-      why: "realistic style is Seedream's strongest fit for photorealism",
-    };
+    return HIGGSFIELD_IMAGE_MODELS.realistic;
   }
-  if (excl.length > 0) {
-    return {
-      model: "Nano Banana Pro",
-      why: "exclusions/edits are involved — Nano Banana Pro is built for precise control",
-    };
+  if (exclusionList(spec.exclusions).length > 0) {
+    return HIGGSFIELD_IMAGE_MODELS.exclusions;
   }
-  return {
-    model: "Reve",
-    why: "no strong signal either way — Reve defaults to the most prompt-faithful option",
-  };
+  return HIGGSFIELD_IMAGE_MODELS.default;
 }
 
 export function compileHiggsfield(spec: ImageSpec): CompiledPrompt {
@@ -124,11 +141,11 @@ export function compileHiggsfield(spec: ImageSpec): CompiledPrompt {
   const style = styleDescriptor(spec);
   if (style) parts.push(style);
 
-  const exclusions = exclusionList(spec);
+  const exclusions = exclusionList(spec.exclusions);
 
   return {
     platform: "Higgsfield",
-    note: `Routed to ${model} — ${why}.`,
+    note: `Routed to ${model} — ${why}. Lineup verified ${KNOWLEDGE_VERIFIED}.`,
     prompt: parts.filter(Boolean).join(", "),
     meta: {
       model,

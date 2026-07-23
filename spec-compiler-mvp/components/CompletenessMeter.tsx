@@ -7,8 +7,8 @@ interface Props {
 }
 
 export default function CompletenessMeter({ result }: Props) {
-  const { score, creditsAtRisk, missing } = result;
-  const isSafe = creditsAtRisk === 0;
+  const { score, regenRisks, missing } = result;
+  const isSafe = regenRisks === 0;
 
   return (
     <div className="border border-line rounded-sm bg-paperRaised p-4">
@@ -21,9 +21,7 @@ export default function CompletenessMeter({ result }: Props) {
             isSafe ? "bg-safeSoft text-safe" : "bg-riskSoft text-risk"
           }`}
         >
-          {isSafe
-            ? "CREDITS AT RISK: 0"
-            : `CREDITS AT RISK: ${creditsAtRisk}`}
+          {isSafe ? "REGEN RISKS: 0" : `REGEN RISKS: ${regenRisks}`}
         </span>
       </div>
 
@@ -37,20 +35,27 @@ export default function CompletenessMeter({ result }: Props) {
       </div>
 
       {missing.length > 0 ? (
-        <ul className="space-y-1">
-          {missing.map((field) => (
-            <li
-              key={field.key}
-              className="font-mono text-xs text-inkMuted flex gap-2"
-            >
-              <span className="text-risk">·</span>
-              <span>
-                <span className="text-ink">{field.label}</span> — prevents{" "}
-                {field.prevents}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-1 mb-2">
+            {missing.map((field) => (
+              <li
+                key={field.key}
+                className="font-mono text-xs text-inkMuted flex gap-2"
+              >
+                <span className="text-risk">·</span>
+                <span>
+                  <span className="text-ink">{field.label}</span> — prevents{" "}
+                  {field.prevents}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {/* Honest math: this is a count of unpinned fields, not a literal
+              credit tally — say so instead of dressing it up. */}
+          <p className="font-mono text-[10px] text-inkMuted">
+            Each unpinned field above is a common cause of a throwaway run.
+          </p>
+        </>
       ) : (
         <p className="font-mono text-xs text-safe">
           All required fields answered. Nothing here should waste a generation.

@@ -67,7 +67,7 @@ function composeSystem(domain: Domain): string {
   return `You write a single, vivid, coherent ${medium} prompt. Given the user's idea and their structured answers, weave EVERYTHING into natural, flowing description — do NOT output a comma-separated list of fragments, and do NOT invent details the user didn't give. Keep it to 1-3 sentences, concrete and visual. Do not mention aspect ratio, resolution, duration, or camera/render settings — those are added separately. Respond with ONLY a JSON object {"prompt": "..."}.`;
 }
 
-const QUESTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"questions":[{"id":"short_snake_id","question":"...","options":["...","..."],"multi":false}]}. No prose, no markdown code fences.`;
+const QUESTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"questions":[{"id":"short_snake_id","question":"...","options":["...","..."],"multi":false}]}. Each entry in "options" is a plain descriptive string ONLY — never the word "multi" or any field name. "multi" is a separate boolean sibling of "options", not an option value. No prose, no markdown code fences.`;
 const ENTITIES_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"entities":[{"id":"short_snake_id","label":"Barista"}]}. No prose, no markdown code fences.`;
 const SCENE_CONTRACT = `\n\n(Return ONLY {"prompt":"..."}.)`;
 
@@ -167,6 +167,47 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+// Weaker models sometimes echo the schema's own keywords into the options
+// array (e.g. the literal token "multi" before each real option) or wrap
+// each option in an object. These would otherwise render as junk chips.
+const OPTION_NOISE = new Set([
+  "multi",
+  "true",
+  "false",
+  "options",
+  "option",
+  "id",
+  "question",
+]);
+
+function optionText(v: unknown): string {
+  if (typeof v === "string") return v.trim();
+  if (v && typeof v === "object") {
+    const r = v as Record<string, unknown>;
+    for (const k of ["value", "label", "option", "text", "name", "title"]) {
+      const s = str(r[k]);
+      if (s) return s;
+    }
+  }
+  return "";
+}
+
+function normalizeOptions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of raw) {
+    const s = optionText(v);
+    if (!s || OPTION_NOISE.has(s.toLowerCase())) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 function normalizeQuestions(raw: unknown, idPrefix: string): Question[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
@@ -179,10 +220,12 @@ function normalizeQuestions(raw: unknown, idPrefix: string): Question[] {
     let id = `${idPrefix}${str(r.id) || `q${i}`}`;
     while (seen.has(id)) id = `${id}_`;
     seen.add(id);
-    const options = Array.isArray(r.options)
-      ? r.options.map(str).filter(Boolean).slice(0, 8)
-      : [];
-    out.push({ id, question, options, multi: r.multi === true });
+    out.push({
+      id,
+      question,
+      options: normalizeOptions(r.options),
+      multi: r.multi === true,
+    });
   });
   return out;
 }

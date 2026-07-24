@@ -6,7 +6,7 @@
 // where they apply. Answers accumulate in qa.answers and feed the AI
 // compose step at generate time.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Loader2, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { Domain, ImageSpec, VideoSpec } from "@/lib/types";
 import { ProviderConfig } from "@/lib/providers";
@@ -16,6 +16,7 @@ import {
   Entity,
   buildAnswered,
   answeredCount,
+  askedQuestions,
 } from "@/lib/questions";
 
 interface Props {
@@ -23,7 +24,9 @@ interface Props {
   idea: string;
   spec: ImageSpec | VideoSpec;
   qa: QAState;
-  onQaChange: (qa: QAState) => void;
+  // Functional updater — async loads merge into the LATEST state so a
+  // slow question-fetch can never clobber an answer the user just picked.
+  onQaChange: (update: (prev: QAState) => QAState) => void;
   config: ProviderConfig | null;
 }
 
@@ -128,15 +131,20 @@ export default function QuestionEngine({
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  // Entities whose questions are loaded or in flight — prevents a second
+  // open (or a rapid double-click) from re-asking the same questions.
+  const generated = useRef<Set<string>>(new Set());
 
   const hasIdea = idea.trim().length > 0;
   const ready = config && hasIdea;
 
   const setAnswer = (id: string, value: string) => {
-    const answers = { ...qa.answers };
-    if (value.trim()) answers[id] = value;
-    else delete answers[id];
-    onQaChange({ ...qa, answers });
+    onQaChange((prev) => {
+      const answers = { ...prev.answers };
+      if (value.trim()) answers[id] = value;
+      else delete answers[id];
+      return { ...prev, answers };
+    });
   };
 
   const friendly = (e: unknown): string => {
@@ -148,20 +156,19 @@ export default function QuestionEngine({
     return msg.slice(0, 180);
   };
 
-  const openEntity = async (entity: Entity, entitiesOverride?: Entity[]) => {
-    const next = new Set(open);
-    if (next.has(entity.id)) {
-      next.delete(entity.id);
-      setOpen(next);
+  const openEntity = async (entity: Entity) => {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(entity.id)) next.delete(entity.id);
+      else next.add(entity.id);
+      return next;
+    });
+    // Already have (or are fetching) this entity's questions → never re-ask.
+    if (!config || qa.entityQuestions[entity.id] || generated.current.has(entity.id)) {
       return;
     }
-    next.add(entity.id);
-    setOpen(next);
-    if (qa.entityQuestions[entity.id] || !config) return;
-
-    const busy = new Set(loading);
-    busy.add(entity.id);
-    setLoading(busy);
+    generated.current.add(entity.id);
+    setLoading((prev) => new Set(prev).add(entity.id));
     try {
       const { generateEntityQuestions } = await import("@/lib/analyze");
       const questions = await generateEntityQuestions(
@@ -169,22 +176,31 @@ export default function QuestionEngine({
         idea,
         entity,
         buildAnswered(domain, spec, qa),
+        askedQuestions(qa),
         optsOf(config)
       );
-      onQaChange({
-        ...qa,
-        entities: entitiesOverride ?? qa.entities,
-        entityQuestions: { ...qa.entityQuestions, [entity.id]: questions },
-      });
+      onQaChange((prev) =>
+        prev.entityQuestions[entity.id]
+          ? prev // a concurrent op already set them — keep, don't overwrite
+          : {
+              ...prev,
+              entityQuestions: { ...prev.entityQuestions, [entity.id]: questions },
+            }
+      );
     } catch (e) {
       setError(friendly(e));
-      const reopen = new Set(open);
-      reopen.delete(entity.id);
-      setOpen(reopen);
+      generated.current.delete(entity.id); // allow a retry
+      setOpen((prev) => {
+        const next = new Set(prev);
+        next.delete(entity.id);
+        return next;
+      });
     } finally {
-      const done = new Set(loading);
-      done.delete(entity.id);
-      setLoading(done);
+      setLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(entity.id);
+        return next;
+      });
     }
   };
 
@@ -200,8 +216,9 @@ export default function QuestionEngine({
         buildAnswered(domain, spec, qa),
         optsOf(config)
       );
-      onQaChange({ ...qa, entities });
-      if (entities[0]) void openEntity(entities[0], entities);
+      // Merge functionally — keep any answers and already-loaded questions.
+      onQaChange((prev) => ({ ...prev, entities }));
+      if (entities[0]) void openEntity(entities[0]);
     } catch (e) {
       setError(friendly(e));
     } finally {

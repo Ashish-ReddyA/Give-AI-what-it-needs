@@ -111,6 +111,7 @@ describe("generateEntityQuestions", () => {
       "a barista pouring latte in a sunset cafe",
       { id: "barista", label: "Barista" },
       {},
+      ["What is in the cafe?"], // already asked elsewhere → must not repeat
       {
         providerId: "openai",
         apiKey: "sk-openai",
@@ -138,6 +139,9 @@ describe("generateEntityQuestions", () => {
     expect(r.url).toBe("/api/analyze");
     expect(r.headers.get("x-provider-key")).toBe("sk-openai");
     expect(String(r.body.system)).toMatch(/Barista/);
+    // the already-asked list travels so the model won't repeat questions
+    const sent = JSON.parse(String(r.body.user));
+    expect(sent.alreadyAsked).toEqual(["What is in the cafe?"]);
   });
 
   it("defaults multi to false when the model omits it", async () => {
@@ -146,6 +150,7 @@ describe("generateEntityQuestions", () => {
       "a cat",
       { id: "cat", label: "Cat" },
       {},
+      [],
       {
         providerId: "groq",
         apiKey: "gsk",

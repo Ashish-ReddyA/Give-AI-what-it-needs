@@ -42,7 +42,7 @@ const SceneSchema = z.object({ prompt: z.string() });
 
 // ---- prompts (provider-neutral) ----
 
-const CONTEXT_NOTE = `The user message is JSON: { idea, alreadyAnswered }. Never ask about anything already present in alreadyAnswered. Options must be short, self-contained descriptive phrases that read naturally in a scene description (e.g. "orange tabby fur", "a ceramic cup", "being poured from a steel jug", "warm sunset light") — not one-word fragments. Leave options as [] for genuinely open questions.`;
+const CONTEXT_NOTE = `The user message is JSON: { idea, alreadyAnswered, alreadyAsked }. Never ask about anything present in alreadyAnswered, and never repeat (or lightly reword) any question in alreadyAsked — ask only genuinely new aspects. Options must be short, self-contained descriptive phrases that read naturally in a scene description (e.g. "orange tabby fur", "a ceramic cup", "being poured from a steel jug", "warm sunset light") — not one-word fragments. Leave options as [] for genuinely open questions.`;
 
 function entitiesSystem(domain: Domain): string {
   const medium = domain === "video" ? "video" : "image";
@@ -227,12 +227,18 @@ export async function generateEntityQuestions(
   idea: string,
   entity: Entity,
   answered: Record<string, string>,
+  alreadyAsked: string[],
   opts: AnalyzeOptions
 ): Promise<Question[]> {
+  const content = JSON.stringify({
+    idea: idea.trim(),
+    alreadyAnswered: answered,
+    alreadyAsked,
+  });
   const obj = await runStructured(
     entityQuestionsSystem(domain, entity.label),
     QUESTIONS_CONTRACT,
-    userMessage(idea, answered),
+    content,
     QuestionsSchema,
     opts
   );

@@ -50,6 +50,12 @@ export function allQuestions(qa: QAState): Question[] {
   return Object.values(qa.entityQuestions).flat();
 }
 
+/** The text of every question already asked (any entity) — passed to the
+ * model so it never asks the same thing again on another entity. */
+export function askedQuestions(qa: QAState): string[] {
+  return allQuestions(qa).map((q) => q.question);
+}
+
 /** Answered facts keyed by question text, so the model never re-asks and the
  * compose step has readable context. */
 export function qaAnsweredByText(qa: QAState): Record<string, string> {

@@ -88,7 +88,10 @@ export default function Home() {
 
   const currentSpec = domain === "image" ? imageSpec : videoSpec;
   const currentQa = qa[domain];
-  const setCurrentQa = (next: QAState) => setQa((p) => ({ ...p, [domain]: next }));
+  // Functional updater so QuestionEngine's async loads always merge into the
+  // latest state (never clobber a just-picked answer).
+  const setCurrentQa = (update: (prev: QAState) => QAState) =>
+    setQa((p) => ({ ...p, [domain]: update(p[domain]) }));
 
   const switchDomain = (d: Domain) => {
     setDomain(d);

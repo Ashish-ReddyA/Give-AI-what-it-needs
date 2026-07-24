@@ -120,6 +120,12 @@ what the user wanted and what the project is named for.)
   Results are on-demand (an AI call) and go stale when inputs change.
 - **Skippable & persistent:** answer only what matters; the whole entity
   tree + answers persist to localStorage (defensively sanitized).
+- **Never lost, never re-asked:** the parent owns the QA state and
+  `QuestionEngine` updates it with **functional** setters, so a slow
+  question-fetch completing can't clobber an answer picked meanwhile. Each
+  entity generates its questions once (a ref guard blocks re-open/double
+  fetch), and the model is given the `alreadyAsked` list so it doesn't
+  repeat a question on another entity.
 - **Tests:** the generators + `composeScene` over both transports (id
   namespacing, `multi` flag, JSON salvage, empty-prompt guard), the question
   helpers, the route handler, and a browser e2e (extract entities →

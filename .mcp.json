@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "spec-compiler": {
+      "command": "npm",
+      "args": ["--prefix", "spec-compiler-mvp", "run", "-s", "mcp"]
+    }
+  }
+}

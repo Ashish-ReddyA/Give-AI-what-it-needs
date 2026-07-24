@@ -52,30 +52,35 @@ components/             fields (shared primitives) · QuestionFlow ·
 app/page.tsx            domain toggle + state + persistence + compile gate
 ```
 
-No backend, no database. The compilers are pure template functions, and
-that's permanent (deterministic core, intelligent edges — see DESIGN.md §3).
-The one LLM call in the app is the optional **AI assist** below — and it
-runs in the user's browser, not on a server.
+No database. The compilers are pure template functions, and that's
+permanent (deterministic core, intelligent edges — see DESIGN.md §3). The
+one LLM call in the app is the optional **AI assist** below.
 
-## AI assist (BYOK)
+## AI assist (BYOK — any provider)
 
-Paste your own Anthropic API key into the AI assist panel and one Claude
-call (`claude-opus-4-8`, structured outputs) parses your idea to pre-fill
-the fields it already answers — so the form never re-asks what you typed —
-and suggests the next best question, tailored to the idea.
+Pick a provider (Anthropic, OpenAI, NVIDIA, Google, Groq, Mistral,
+OpenRouter, or a custom OpenAI-compatible endpoint), paste **your own** key
+for it, and one model call parses your idea to pre-fill the fields it
+already answers — so the form never re-asks what you typed — and suggests
+the next best question, tailored to the idea. One provider at a time.
 
-- **The key never leaves your browser** except to `api.anthropic.com`
-  directly (localStorage + the SDK's browser CORS opt-in). There is no
-  server to send it to.
+- **Where the key goes:** Anthropic is called **browser-direct**, so the
+  key never leaves your browser. Every other provider blocks browser calls
+  (CORS), so its request goes through the app's own `/api/analyze` proxy —
+  a pure pass-through that forwards to the provider and **never stores the
+  key**. Either way the key lives only in your browser's localStorage;
+  there is no app-side API key.
 - **It only fills empty fields** — your explicit picks are never
   overwritten, and extraction is deliberately conservative (it won't guess
   a format from "for Instagram").
 - **Fully optional** — without a key the app is the same static form.
 
 ```
+lib/providers.ts        the provider registry (UI + proxy read it) + SSRF guard
 lib/analyze-core.ts     types + merge logic (fills empty fields only) — no SDK
-lib/analyze.ts          the one Claude call (dynamically imported, lazy chunk)
-components/AssistPanel  key management + pre-fill button + next-question hint
+lib/analyze.ts          dispatch: Anthropic browser-direct, others via proxy
+app/api/analyze/route   the same-origin proxy for OpenAI-compatible providers
+components/AssistPanel   provider picker + key/model + next-question hint
 ```
 
 ## Design decisions worth knowing

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  generateOverallQuestions,
-  generateSections,
-  generateSectionQuestions,
+  generateEntities,
+  generateEntityQuestions,
+  composeScene,
 } from "../analyze";
 
 // ---- wire tests: mocked fetch, real request paths ----
@@ -44,165 +44,169 @@ function anthropicWire(payload: unknown) {
   };
 }
 
-const OVERALL = {
-  questions: [
-    { id: "cat_pose", question: "How is the cat posed?", options: ["sitting", "mid-pounce"] },
-    { id: "cat_color", question: "What colour is the cat?", options: ["orange tabby"] },
-    { id: "ball", question: "Describe the ball", options: [] },
-  ],
-};
-
-describe("generateOverallQuestions — Anthropic (browser-direct)", () => {
-  it("calls api.anthropic.com with structured output and namespaces ids", async () => {
+describe("generateEntities", () => {
+  it("extracts the things in the idea (Anthropic browser-direct)", async () => {
     const captured: Captured[] = [];
-    const questions = await generateOverallQuestions(
+    const entities = await generateEntities(
       "image",
-      "a cat playing with a ball",
+      "a barista pouring latte in a sunset cafe",
       { style: "realistic" },
       {
         providerId: "anthropic",
-        apiKey: "sk-ant-test",
-        fetch: capture(anthropicWire(OVERALL), captured),
-      }
-    );
-
-    expect(questions).toHaveLength(3);
-    expect(questions[0].id).toBe("o_cat_pose");
-    expect(questions[0].options).toEqual(["sitting", "mid-pounce"]);
-    expect(questions[2].options).toEqual([]);
-
-    const r = captured[0];
-    expect(r.url).toContain("api.anthropic.com");
-    expect(r.headers.get("x-api-key")).toBe("sk-ant-test");
-    expect(r.headers.get("anthropic-dangerous-direct-browser-access")).toBe("true");
-    expect((r.body.output_config as { format: { type: string } }).format.type).toBe(
-      "json_schema"
-    );
-    const sent = JSON.parse((r.body.messages as Array<{ content: string }>)[0].content);
-    expect(sent.idea).toContain("cat");
-    expect(sent.alreadyAnswered).toEqual({ style: "realistic" });
-  });
-});
-
-describe("generateOverallQuestions — openai-compat (via proxy)", () => {
-  it("posts to /api/analyze with provider/model/key and namespaces ids", async () => {
-    const captured: Captured[] = [];
-    const questions = await generateOverallQuestions(
-      "video",
-      "a barista pouring latte art",
-      {},
-      {
-        providerId: "openai",
-        apiKey: "sk-openai-test",
-        model: "gpt-4o-mini",
-        fetch: capture({ text: JSON.stringify(OVERALL) }, captured),
-      }
-    );
-
-    expect(questions.map((q) => q.id)).toEqual(["o_cat_pose", "o_cat_color", "o_ball"]);
-
-    const r = captured[0];
-    expect(r.url).toBe("/api/analyze");
-    expect(r.headers.get("x-provider-key")).toBe("sk-openai-test");
-    expect(r.body.provider).toBe("openai");
-    expect(r.body.model).toBe("gpt-4o-mini");
-    expect(String(r.body.system)).toMatch(/JSON object/i);
-  });
-
-  it("salvages JSON wrapped in prose / code fences and drops junk questions", async () => {
-    const questions = await generateOverallQuestions(
-      "image",
-      "a cat",
-      {},
-      {
-        providerId: "groq",
-        apiKey: "gsk-x",
-        model: "openai/gpt-oss-20b",
+        apiKey: "sk-ant",
         fetch: capture(
-          {
-            text:
-              'Sure!\n```json\n{"questions":[{"id":"a","question":"Q1","options":["x"]},{"question":""},{"nope":1}]}\n```',
-          },
-          []
+          anthropicWire({
+            entities: [
+              { id: "barista", label: "Barista" },
+              { id: "latte", label: "Latte" },
+              { id: "cafe", label: "Cafe" },
+              { id: "scene", label: "Scene" },
+            ],
+          }),
+          captured
         ),
       }
     );
-    expect(questions).toHaveLength(1); // blank + malformed dropped
-    expect(questions[0].id).toBe("o_a");
+    expect(entities.map((e) => e.label)).toEqual([
+      "Barista",
+      "Latte",
+      "Cafe",
+      "Scene",
+    ]);
+    const r = captured[0];
+    expect(r.url).toContain("api.anthropic.com");
+    expect(r.headers.get("anthropic-dangerous-direct-browser-access")).toBe("true");
+    const sent = JSON.parse((r.body.messages as Array<{ content: string }>)[0].content);
+    expect(sent.alreadyAnswered).toEqual({ style: "realistic" });
   });
 
-  it("surfaces a proxy error", async () => {
-    await expect(
-      generateOverallQuestions(
-        "image",
-        "a cat",
-        {},
-        {
-          providerId: "openai",
-          apiKey: "sk-bad",
-          model: "gpt-4o-mini",
-          fetch: capture({ error: "Incorrect API key provided." }, [], 401),
-        }
-      )
-    ).rejects.toThrow(/Incorrect API key/);
-  });
-});
-
-describe("generateSections", () => {
-  it("returns normalized, capped sections", async () => {
-    const sections = await generateSections(
+  it("drops entities without a label and caps the list", async () => {
+    const entities = await generateEntities(
       "image",
-      "a cat playing with a ball",
+      "x",
       {},
       {
-        providerId: "openrouter",
-        apiKey: "sk-or-x",
-        model: "openai/gpt-4o-mini",
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
         fetch: capture(
           {
             text: JSON.stringify({
-              sections: [
-                { id: "cat", label: "Cat" },
-                { id: "ball", label: "Ball" },
-                { id: "bg", label: "Background" },
-                { label: "no id still ok" },
-                { id: "x" }, // no label → dropped
-              ],
+              entities: [{ id: "a", label: "A" }, { id: "b" }, { junk: 1 }],
             }),
           },
           []
         ),
       }
     );
-    const labels = sections.map((s) => s.label);
-    expect(labels).toContain("Cat");
-    expect(labels).toContain("Background");
-    expect(labels).not.toContain(undefined);
-    expect(sections.every((s) => s.id && s.label)).toBe(true);
+    expect(entities).toEqual([{ id: "a", label: "A" }]);
   });
 });
 
-describe("generateSectionQuestions", () => {
-  it("namespaces question ids by section", async () => {
-    const questions = await generateSectionQuestions(
+describe("generateEntityQuestions", () => {
+  it("namespaces ids by entity and carries the multi flag (proxy path)", async () => {
+    const captured: Captured[] = [];
+    const questions = await generateEntityQuestions(
       "image",
-      "a cat playing with a ball",
-      { id: "cat", label: "Cat" },
+      "a barista pouring latte in a sunset cafe",
+      { id: "barista", label: "Barista" },
       {},
       {
-        providerId: "anthropic",
-        apiKey: "sk-ant",
+        providerId: "openai",
+        apiKey: "sk-openai",
+        model: "gpt-4o-mini",
         fetch: capture(
-          anthropicWire({
-            questions: [
-              { id: "fur", question: "Fur colour?", options: ["orange"] },
-              { id: "eyes", question: "Eye colour?", options: ["green"] },
-            ],
-          }),
-          []
+          {
+            text: JSON.stringify({
+              questions: [
+                { id: "traits", question: "Barista traits?", options: ["young adult", "female"], multi: true },
+                { id: "pose", question: "Pose?", options: ["pouring"], multi: false },
+                { question: "" }, // dropped
+              ],
+            }),
+          },
+          captured
         ),
       }
     );
-    expect(questions.map((q) => q.id)).toEqual(["s_cat_fur", "s_cat_eyes"]);
+    expect(questions).toHaveLength(2);
+    expect(questions[0].id).toBe("barista_traits");
+    expect(questions[0].multi).toBe(true);
+    expect(questions[1].multi).toBe(false);
+
+    const r = captured[0];
+    expect(r.url).toBe("/api/analyze");
+    expect(r.headers.get("x-provider-key")).toBe("sk-openai");
+    expect(String(r.body.system)).toMatch(/Barista/);
+  });
+
+  it("defaults multi to false when the model omits it", async () => {
+    const questions = await generateEntityQuestions(
+      "image",
+      "a cat",
+      { id: "cat", label: "Cat" },
+      {},
+      {
+        providerId: "groq",
+        apiKey: "gsk",
+        model: "openai/gpt-oss-20b",
+        fetch: capture({ text: '{"questions":[{"id":"fur","question":"Fur?","options":["orange"]}]}' }, []),
+      }
+    );
+    expect(questions[0].multi).toBe(false);
+  });
+});
+
+describe("composeScene", () => {
+  it("returns the AI-written prose prompt (proxy path)", async () => {
+    const captured: Captured[] = [];
+    const prompt = await composeScene(
+      "video",
+      "a barista pouring latte in a sunset cafe",
+      { "Barista traits?": "young adult, female", "Latte?": "being poured from a steel jug" },
+      {
+        providerId: "openai",
+        apiKey: "sk-openai",
+        model: "gpt-4o-mini",
+        fetch: capture(
+          { text: JSON.stringify({ prompt: "A young female barista pours latte from a steel jug in a sunset-lit cafe." }) },
+          captured
+        ),
+      }
+    );
+    expect(prompt).toContain("young female barista");
+    expect(prompt).not.toContain(","); // it's prose, not the comma dump
+    // details travel to the model
+    const sent = JSON.parse(String(captured[0].body.user));
+    expect(sent.details["Barista traits?"]).toBe("young adult, female");
+  });
+
+  it("uses structured output on the Anthropic path", async () => {
+    const captured: Captured[] = [];
+    const prompt = await composeScene(
+      "image",
+      "a cat",
+      { "Fur?": "orange tabby" },
+      {
+        providerId: "anthropic",
+        apiKey: "sk-ant",
+        fetch: capture(anthropicWire({ prompt: "An orange tabby cat." }), captured),
+      }
+    );
+    expect(prompt).toBe("An orange tabby cat.");
+    expect((captured[0].body.output_config as { format: { type: string } }).format.type).toBe(
+      "json_schema"
+    );
+  });
+
+  it("throws on an empty prompt", async () => {
+    await expect(
+      composeScene(
+        "image",
+        "a cat",
+        {},
+        { providerId: "openai", apiKey: "k", model: "gpt-4o-mini", fetch: capture({ text: '{"prompt":""}' }, []) }
+      )
+    ).rejects.toThrow(/empty/);
   });
 });

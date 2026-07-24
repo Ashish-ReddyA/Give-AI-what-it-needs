@@ -11,7 +11,7 @@ compile that spec into whatever the downstream tool actually wants.
 
 | Path | What it is |
 |------|-----------|
-| [`spec-compiler-mvp/`](./spec-compiler-mvp) | The working Next.js app — **image + video** domains. The **AI reads your idea and generates the questions it needs** (with a "Deep Analysis" drill-down into each part), then compiles one prompt per platform (image: Midjourney / DALL·E / Higgsfield · video: Higgsfield / Veo 3 / Runway). BYOK, any provider. |
+| [`spec-compiler-mvp/`](./spec-compiler-mvp) | The working Next.js app — **image + video** domains. The AI **extracts the things in your idea** (barista · latte · cafe · scene), asks deep multi-select questions about each, then **writes one coherent prompt per platform** (image: Midjourney / DALL·E / Higgsfield · video: Higgsfield / Veo 3 / Runway). BYOK, any provider. |
 | [`spec-compiler-mvp/mcp/`](./spec-compiler-mvp/mcp) | **MCP server source** — the same elicit → compile loop as tools (`elicit_spec`, `compile_spec`) for Claude Code / Claude Desktop / any MCP agent. `.mcp.json` at this repo's root auto-registers it for Claude Code. |
 | [`mcp-server/`](./mcp-server) | The **publishable npm package** (`spec-compiler-mcp`) wrapping that server — a single self-contained bundle so anyone can `npx -y spec-compiler-mcp`. Registry manifests (`server.json`, `smithery.yaml`) and [`PUBLISHING.md`](./mcp-server/PUBLISHING.md) live here. |
 | [`DESIGN.md`](./DESIGN.md) | The v1 critique, the four locked product decisions, and the target architecture. |

@@ -1,16 +1,14 @@
-// The dynamic question engine's data model.
+// The entity-first question engine's data model.
 //
-// The AI reads the user's idea and GENERATES questions about the subject —
-// "a cat playing with a ball" → cat pose? cat color? the ball? — instead of
-// a fixed form. Two levels:
-//   overall  → the highest-impact questions for the whole idea
-//   sections → the idea broken into parts (Cat, Ball, Background, …); pick
-//              one and the AI asks detailed questions about just that part
+// The AI reads the idea and first EXTRACTS the things in it —
+// "a barista pouring latte in a sunset cafe" → Barista · Latte · Cafe ·
+// Scene. Each is a card; open it and the AI asks detailed questions about
+// just that thing (multi-select where several values co-exist, and
+// relational ones like "latte: in a cup / being poured"). Answers feed an
+// AI compose step that writes a coherent prompt — not a comma dump.
 //
-// Answers accumulate here and get woven into the subject text that the
-// deterministic compilers turn into per-platform prompts. The fixed
-// technical picks (aspect ratio, duration, style, …) stay on the spec and
-// are NOT asked here — that's the "hybrid" split.
+// The fixed technical picks (aspect ratio, duration, style, …) stay on the
+// spec and are NOT asked here — that's the hybrid split.
 
 import { Domain, ImageSpec, VideoSpec } from "./types";
 import { answeredImageFields, answeredVideoFields } from "./analyze-core";
@@ -21,42 +19,39 @@ export interface Question {
   question: string;
   /** AI-suggested answers; may be empty for open questions. Also free-text. */
   options: string[];
+  /** true → several values can co-exist (pick many + type your own). */
+  multi: boolean;
 }
 
-export interface Section {
+/** An extracted thing from the idea (a subject, object, the setting, or the
+ * catch-all "Scene" for mood/lighting). */
+export interface Entity {
   id: string;
   label: string;
 }
 
 export interface QAState {
-  /** Level-1 questions for the whole idea. */
-  overall: Question[];
-  /** Idea broken into parts; empty until Deep Analysis runs. */
-  sections: Section[];
-  /** sectionId → that section's detailed questions (loaded on open). */
-  sectionQuestions: Record<string, Question[]>;
-  /** questionId → the user's answer (chip value or free text). */
+  /** The things pulled from the idea; empty until extraction runs. */
+  entities: Entity[];
+  /** entityId → that entity's detail questions (loaded on open). */
+  entityQuestions: Record<string, Question[]>;
+  /** questionId → the answer. Multi-select answers are comma-joined. */
   answers: Record<string, string>;
 }
 
 export const EMPTY_QA: QAState = {
-  overall: [],
-  sections: [],
-  sectionQuestions: {},
+  entities: [],
+  entityQuestions: {},
   answers: {},
 };
 
-/** Every question currently on screen, flattened — used to resolve answer
- * ids back to their question text for the AI's "already answered" context. */
+/** Every question currently loaded, flattened. */
 export function allQuestions(qa: QAState): Question[] {
-  return [
-    ...qa.overall,
-    ...Object.values(qa.sectionQuestions).flat(),
-  ];
+  return Object.values(qa.entityQuestions).flat();
 }
 
-/** The answered facts, keyed by question text, for the model so it never
- * re-asks something the user has already told it. */
+/** Answered facts keyed by question text, so the model never re-asks and the
+ * compose step has readable context. */
 export function qaAnsweredByText(qa: QAState): Record<string, string> {
   const byId = new Map(allQuestions(qa).map((q) => [q.id, q.question]));
   const out: Record<string, string> = {};
@@ -67,8 +62,8 @@ export function qaAnsweredByText(qa: QAState): Record<string, string> {
   return out;
 }
 
-/** Everything the AI should treat as settled: the fixed technical picks
- * plus the answered subject questions. */
+/** Everything the AI should treat as settled: the fixed technical picks plus
+ * the answered detail questions. */
 export function buildAnswered(
   domain: Domain,
   spec: ImageSpec | VideoSpec,
@@ -81,8 +76,9 @@ export function buildAnswered(
   return { ...fixed, ...qaAnsweredByText(qa) };
 }
 
-/** Weave the answered subject details into the idea so the compilers get a
- * rich subject. The technical fields stay on the spec untouched. */
+/** Deterministic FALLBACK subject when no key is available to AI-compose:
+ * the idea plus answered details, comma-joined. The AI compose step
+ * (composeScene) replaces this with real prose whenever a key is present. */
 export function composeSubject(idea: string, qa: QAState): string {
   const details = Object.values(qa.answers)
     .map((a) => a.trim())
@@ -90,8 +86,7 @@ export function composeSubject(idea: string, qa: QAState): string {
   return [idea.trim(), ...details].filter(Boolean).join(", ");
 }
 
-/** How many subject questions the user has actually answered — drives the
- * "N details added" hint. */
+/** How many detail questions have a non-blank answer. */
 export function answeredCount(qa: QAState): number {
   return Object.values(qa.answers).filter((a) => a.trim().length > 0).length;
 }

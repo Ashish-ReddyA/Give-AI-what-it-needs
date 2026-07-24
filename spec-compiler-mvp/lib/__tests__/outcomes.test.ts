@@ -120,12 +120,11 @@ const baseState: PersistedState = {
   ],
   qa: {
     image: {
-      overall: [{ id: "o_pose", question: "Pose?", options: ["sitting"] }],
-      sections: [{ id: "cat", label: "Cat" }],
-      sectionQuestions: {
-        cat: [{ id: "s_cat_fur", question: "Fur?", options: ["orange"] }],
+      entities: [{ id: "cat", label: "Cat" }],
+      entityQuestions: {
+        cat: [{ id: "cat_fur", question: "Fur?", options: ["orange"], multi: true }],
       },
-      answers: { o_pose: "sitting", s_cat_fur: "orange tabby" },
+      answers: { cat_fur: "orange tabby, fluffy" },
     },
     video: EMPTY_QA,
   },
@@ -157,10 +156,13 @@ describe("persisted state", () => {
         pending: [{ id: "ok", domain: "video", platform: "Veo 3" }, { junk: 1 }],
         qa: {
           image: {
-            overall: [
-              { id: "keep", question: "Q", options: ["a", 5] },
-              { question: "no id" }, // dropped
-            ],
+            entities: [{ id: "cat", label: "Cat" }, { id: "x" }], // 2nd dropped (no label)
+            entityQuestions: {
+              cat: [
+                { id: "keep", question: "Q", options: ["a", 5], multi: true },
+                { question: "no id" }, // dropped
+              ],
+            },
             answers: { keep: "a", bad: 7 }, // non-string dropped
           },
         },
@@ -173,8 +175,10 @@ describe("persisted state", () => {
     expect(s.imageSpec.format).toBe("landscape"); // valid value kept
     expect(s.videoSpec).toEqual(EMPTY_VIDEO_SPEC);
     expect(s.pending).toHaveLength(1); // junk entry dropped
-    expect(s.qa.image.overall).toHaveLength(1); // question without id dropped
-    expect(s.qa.image.overall[0].options).toEqual(["a"]); // non-string option dropped
+    expect(s.qa.image.entities).toEqual([{ id: "cat", label: "Cat" }]); // no-label dropped
+    expect(s.qa.image.entityQuestions.cat).toHaveLength(1); // question without id dropped
+    expect(s.qa.image.entityQuestions.cat[0].options).toEqual(["a"]); // non-string option dropped
+    expect(s.qa.image.entityQuestions.cat[0].multi).toBe(true);
     expect(s.qa.image.answers).toEqual({ keep: "a" }); // non-string answer dropped
     expect(s.qa.video).toEqual(EMPTY_QA); // missing → empty
   });

@@ -15,6 +15,7 @@ import {
   PersistedState,
 } from "../store";
 import { EMPTY_SPEC, EMPTY_VIDEO_SPEC } from "../types";
+import { EMPTY_QA } from "../questions";
 
 function record(overrides: Partial<OutcomeRecord>): OutcomeRecord {
   return {
@@ -117,11 +118,21 @@ const baseState: PersistedState = {
       assisted: true,
     },
   ],
-  assisted: { image: true, video: false },
+  qa: {
+    image: {
+      overall: [{ id: "o_pose", question: "Pose?", options: ["sitting"] }],
+      sections: [{ id: "cat", label: "Cat" }],
+      sectionQuestions: {
+        cat: [{ id: "s_cat_fur", question: "Fur?", options: ["orange"] }],
+      },
+      answers: { o_pose: "sitting", s_cat_fur: "orange tabby" },
+    },
+    video: EMPTY_QA,
+  },
 };
 
 describe("persisted state", () => {
-  it("round-trips state through storage", () => {
+  it("round-trips state (specs, pending, and the QA tree) through storage", () => {
     const kv = fakeKV();
     savePersistedState(baseState, kv);
     expect(loadPersistedState(kv)).toEqual(baseState);
@@ -130,7 +141,7 @@ describe("persisted state", () => {
   it("returns null when nothing is stored, on corrupt JSON, and with no storage", () => {
     const kv = fakeKV();
     expect(loadPersistedState(kv)).toBeNull();
-    kv.setItem("spec-compiler.state.v1", "{not json");
+    kv.setItem("spec-compiler.state.v2", "{not json");
     expect(loadPersistedState(kv)).toBeNull();
     expect(loadPersistedState(null)).toBeNull();
   });
@@ -138,13 +149,21 @@ describe("persisted state", () => {
   it("sanitizes tampered values field-by-field instead of crashing", () => {
     const kv = fakeKV();
     kv.setItem(
-      "spec-compiler.state.v1",
+      "spec-compiler.state.v2",
       JSON.stringify({
         domain: "audio", // invalid enum
         imageSpec: { idea: 42, style: "vaporwave", format: "landscape" },
         videoSpec: null,
         pending: [{ id: "ok", domain: "video", platform: "Veo 3" }, { junk: 1 }],
-        assisted: "yes",
+        qa: {
+          image: {
+            overall: [
+              { id: "keep", question: "Q", options: ["a", 5] },
+              { question: "no id" }, // dropped
+            ],
+            answers: { keep: "a", bad: 7 }, // non-string dropped
+          },
+        },
       })
     );
     const s = loadPersistedState(kv)!;
@@ -154,7 +173,10 @@ describe("persisted state", () => {
     expect(s.imageSpec.format).toBe("landscape"); // valid value kept
     expect(s.videoSpec).toEqual(EMPTY_VIDEO_SPEC);
     expect(s.pending).toHaveLength(1); // junk entry dropped
-    expect(s.assisted).toEqual({ image: false, video: false });
+    expect(s.qa.image.overall).toHaveLength(1); // question without id dropped
+    expect(s.qa.image.overall[0].options).toEqual(["a"]); // non-string option dropped
+    expect(s.qa.image.answers).toEqual({ keep: "a" }); // non-string answer dropped
+    expect(s.qa.video).toEqual(EMPTY_QA); // missing → empty
   });
 });
 

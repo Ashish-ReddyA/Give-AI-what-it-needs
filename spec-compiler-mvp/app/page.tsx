@@ -15,11 +15,8 @@ import {
 } from "@/lib/completeness";
 import { compileAll } from "@/lib/compilers";
 import { compileAllVideo } from "@/lib/compilers-video";
-import {
-  Analysis,
-  mergeImageAnalysis,
-  mergeVideoAnalysis,
-} from "@/lib/analyze-core";
+import { ProviderConfig } from "@/lib/providers";
+import { QAState, EMPTY_QA, composeSubject, answeredCount } from "@/lib/questions";
 import {
   PendingCopy,
   OutcomeRecord,
@@ -37,7 +34,8 @@ import QuestionFlow from "@/components/QuestionFlow";
 import VideoQuestionFlow from "@/components/VideoQuestionFlow";
 import CompletenessMeter from "@/components/CompletenessMeter";
 import ResultsPanel from "@/components/ResultsPanel";
-import AssistPanel from "@/components/AssistPanel";
+import ProviderKeyBar from "@/components/ProviderKeyBar";
+import QuestionEngine from "@/components/QuestionEngine";
 import OutcomeTracker from "@/components/OutcomeTracker";
 import OutcomeStats from "@/components/OutcomeStats";
 
@@ -45,16 +43,16 @@ export default function Home() {
   const [domain, setDomain] = useState<Domain>("image");
   const [imageSpec, setImageSpec] = useState<ImageSpec>(EMPTY_SPEC);
   const [videoSpec, setVideoSpec] = useState<VideoSpec>(EMPTY_VIDEO_SPEC);
-  // Explicit user override: compile despite unanswered required fields.
-  // This is what keeps the meter and the results gate coherent — results
-  // never silently appear while the meter says fields are at risk.
-  // Deliberately NOT persisted: accepting risk is a per-session decision.
+  const [qa, setQa] = useState<{ image: QAState; video: QAState }>({
+    image: EMPTY_QA,
+    video: EMPTY_QA,
+  });
+  // Explicit override: compile despite unanswered required fields. Not
+  // persisted — accepting risk is a per-session decision.
   const [compileAnyway, setCompileAnyway] = useState(false);
   const [pending, setPending] = useState<PendingCopy[]>([]);
   const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
-  const [assisted, setAssisted] = useState({ image: false, video: false });
-  // Guards the save effect so a render before hydration can't clobber
-  // stored state with defaults.
+  const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -64,7 +62,7 @@ export default function Home() {
       setImageSpec(state.imageSpec);
       setVideoSpec(state.videoSpec);
       setPending(state.pending);
-      setAssisted(state.assisted);
+      setQa(state.qa);
     }
     setOutcomes(loadOutcomes());
     setHydrated(true);
@@ -72,8 +70,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!hydrated) return;
-    savePersistedState({ domain, imageSpec, videoSpec, pending, assisted });
-  }, [hydrated, domain, imageSpec, videoSpec, pending, assisted]);
+    savePersistedState({ domain, imageSpec, videoSpec, pending, qa });
+  }, [hydrated, domain, imageSpec, videoSpec, pending, qa]);
+
+  const currentSpec = domain === "image" ? imageSpec : videoSpec;
+  const currentQa = qa[domain];
+  const setCurrentQa = (next: QAState) => setQa((p) => ({ ...p, [domain]: next }));
 
   const switchDomain = (d: Domain) => {
     setDomain(d);
@@ -81,13 +83,9 @@ export default function Home() {
   };
 
   const startNewSpec = () => {
-    if (domain === "image") {
-      setImageSpec(EMPTY_SPEC);
-      setAssisted((a) => ({ ...a, image: false }));
-    } else {
-      setVideoSpec(EMPTY_VIDEO_SPEC);
-      setAssisted((a) => ({ ...a, video: false }));
-    }
+    if (domain === "image") setImageSpec(EMPTY_SPEC);
+    else setVideoSpec(EMPTY_VIDEO_SPEC);
+    setQa((p) => ({ ...p, [domain]: EMPTY_QA }));
     setCompileAnyway(false);
   };
 
@@ -101,33 +99,30 @@ export default function Home() {
 
   const currentSpecEmpty =
     domain === "image"
-      ? JSON.stringify(imageSpec) === JSON.stringify(EMPTY_SPEC)
-      : JSON.stringify(videoSpec) === JSON.stringify(EMPTY_VIDEO_SPEC);
+      ? JSON.stringify(imageSpec) === JSON.stringify(EMPTY_SPEC) &&
+        answeredCount(qa.image) === 0
+      : JSON.stringify(videoSpec) === JSON.stringify(EMPTY_VIDEO_SPEC) &&
+        answeredCount(qa.video) === 0;
 
   const showResults =
     completeness.hasIdea && (completeness.isComplete || compileAnyway);
 
+  // The AI answers get woven into the subject the compilers see.
   const results = useMemo(() => {
     if (!showResults) return [];
-    return domain === "image" ? compileAll(imageSpec) : compileAllVideo(videoSpec);
-  }, [showResults, domain, imageSpec, videoSpec]);
-
-  // AI assist fills only empty fields — the user's explicit picks always win.
-  const handleAnalysis = (a: Analysis): { filled: string[] } => {
-    if (a.domain === "image") {
-      const { spec, filled } = mergeImageAnalysis(imageSpec, a);
-      setImageSpec(spec);
-      if (filled.length > 0) setAssisted((s) => ({ ...s, image: true }));
-      return { filled };
+    if (domain === "image") {
+      return compileAll({
+        ...imageSpec,
+        idea: composeSubject(imageSpec.idea, qa.image),
+      });
     }
-    const { spec, filled } = mergeVideoAnalysis(videoSpec, a);
-    setVideoSpec(spec);
-    if (filled.length > 0) setAssisted((s) => ({ ...s, video: true }));
-    return { filled };
-  };
+    return compileAllVideo({
+      ...videoSpec,
+      idea: composeSubject(videoSpec.idea, qa.video),
+    });
+  }, [showResults, domain, imageSpec, videoSpec, qa]);
 
   // A successful copy = "about to spend credits" — open an outcome entry.
-  // One pending entry per domain+platform; re-copying replaces it.
   const handleCopy = (platform: string) => {
     const entry: PendingCopy = {
       id: newId(),
@@ -137,7 +132,7 @@ export default function Home() {
       score: completeness.score,
       isComplete: completeness.isComplete,
       regenRisks: completeness.regenRisks,
-      assisted: assisted[domain],
+      assisted: answeredCount(currentQa) > 0,
     };
     setPending((prev) => [
       ...prev.filter((p) => !(p.domain === domain && p.platform === platform)),
@@ -157,9 +152,8 @@ export default function Home() {
     });
   };
 
-  const dismissPending = (id: string) => {
+  const dismissPending = (id: string) =>
     setPending((prev) => prev.filter((p) => p.id !== id));
-  };
 
   const handleClearLog = () => {
     if (!window.confirm("Delete the whole outcome log? This is the hypothesis data.")) {
@@ -180,9 +174,9 @@ export default function Home() {
             Ask first. Spend once.
           </h1>
           <p className="font-body text-sm text-inkMuted mt-2">
-            Answer a few questions before you generate. Get one compiled
-            prompt per platform — no wasted credits on the wrong shape,
-            length, or missing detail.
+            Describe your idea; the AI asks what it actually needs to know.
+            Get one compiled prompt per platform — no wasted credits on the
+            wrong shape, length, or a missing detail.
           </p>
         </header>
 
@@ -227,10 +221,17 @@ export default function Home() {
         </section>
 
         <section className="mb-6">
-          <AssistPanel
+          <ProviderKeyBar onConfigChange={setProviderConfig} />
+        </section>
+
+        <section className="mb-6">
+          <QuestionEngine
             domain={domain}
-            spec={domain === "image" ? imageSpec : videoSpec}
-            onAnalysis={handleAnalysis}
+            idea={currentSpec.idea}
+            spec={currentSpec}
+            qa={currentQa}
+            onQaChange={setCurrentQa}
+            config={providerConfig}
           />
         </section>
 
@@ -275,8 +276,8 @@ export default function Home() {
 
         <footer className="mt-12 pt-4 border-t border-line">
           <p className="font-mono text-[11px] text-inkMuted">
-            Deterministic compilers · BYOK AI assist · outcome log (local
-            only) · also an MCP server (mcp/). See ROADMAP.md.
+            Deterministic compilers · AI question engine (BYOK) · outcome log
+            (local) · also an MCP server (mcp/). See ROADMAP.md.
           </p>
         </footer>
       </div>

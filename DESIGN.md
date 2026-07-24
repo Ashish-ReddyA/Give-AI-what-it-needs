@@ -89,12 +89,39 @@ the phasing; this carries the "why."_
   This is both the killer feature and the instrumentation that finally
   measures "regenerations avoided."
 
-## 4. The LLM layer (✅ shipped 2026-07-23; multi-provider 2026-07-23)
+## 4. The LLM layer — the question engine (✅ 2026-07-24)
 
-BYOK, and **any provider** — the user picks one (Anthropic, OpenAI, NVIDIA,
-Google, Groq, Mistral, OpenRouter, or a custom OpenAI-compatible endpoint)
-and brings that provider's key, one at a time. `lib/providers.ts` is the
-single registry both the UI and the server route read.
+**This is the core.** The AI does not pre-fill a fixed form — it **reads the
+idea and generates the questions**, tailored to the subject, then lets the
+user drill into any part. "a cat playing with a ball" → *cat pose? cat
+color? the ball?* → **Deep Analysis** → sections (Cat · Ball · Background) →
+click one → detailed questions about just that part. (An earlier version
+merely pre-filled the fixed fields from the idea; that was the shallow
+version — this is the real elicitation the whole project is named for.)
+
+- **Hybrid split (locked with the user):** the enumerated technical picks
+  (aspect ratio, duration, style, motion…) stay as instant fixed taps on
+  the spec; the AI generates only the **subject/detail** questions. Two
+  levels: overall → sections → per-section questions (`lib/questions.ts`,
+  `lib/analyze.ts`, `components/QuestionEngine.tsx`).
+- **Answers → prompt:** every answer accumulates in `qa.answers` and
+  `composeSubject()` weaves them into the subject the deterministic
+  compilers see. Compilation stays 100% deterministic; the AI only asks.
+- **Skippable & additive:** answer only what matters; question ids are
+  namespaced (`o_…`, `s_<section>_…`); the whole tree persists to
+  localStorage (defensively sanitized).
+- **Tests:** the three generators over both transports (id namespacing,
+  JSON salvage, error passthrough), `composeSubject`/`buildAnswered`, the
+  route handler, and a browser e2e (generate → chip answer → deep
+  analysis → section answer → both woven into the compiled prompt →
+  persistence).
+
+### Transport & providers (BYOK, any provider, one at a time)
+
+The user picks one provider (Anthropic, OpenAI, NVIDIA, Google, Groq,
+Mistral, OpenRouter, or a custom OpenAI-compatible endpoint) and brings that
+provider's key. `lib/providers.ts` is the single registry the UI and the
+route share.
 
 - **Two routes, by provider kind (`lib/analyze.ts` dispatches):**
   - **Anthropic** → called **directly from the browser** with the user's
@@ -118,25 +145,11 @@ single registry both the UI and the server route read.
 - **SSRF guard:** the custom provider's user-supplied base URL is
   restricted to `https://` and rejected for loopback/private/link-local
   hosts (`isSafeBaseUrl`).
-- **Behavior (unchanged):** conservative extraction (the prompt forbids
-  inventing fields), already-answered fields ride along so they're never
-  re-asked, `mergeAnalysis` fills **empty fields only** — user picks always
-  win, and `nextQuestion` is the single highest-leverage question.
-- **Tests:** merge invariants; both analyze paths with mocked fetch
-  (Anthropic headers/model/schema, proxy provider/model/key + enum
-  coercion + JSON salvage + error passthrough); the route handler
-  (forwarding, SSRF, error passthrough, Anthropic-refusal); provider
-  registry + `isSafeBaseUrl`.
-- **Key strategy — DECIDED 2026-07-23: BYOK.** The user pastes their own
-  Anthropic API key into the UI; it lives in browser `localStorage` only
-  and is never persisted server-side. Two implementation options when
-  building: direct browser → Anthropic calls (the API supports CORS via
-  the `anthropic-dangerous-direct-browser-access: true` header — keeps the
-  app fully static, key never touches our infra) or a thin pass-through
-  route. Prefer the direct-browser path: with BYOK the key is the user's
-  own, and static hosting stays possible.
-- **Fallback:** route absent/erroring → client keeps the static form.
-  No feature of the app may *require* the route.
+- **Already-answered context:** the answered fixed fields *and* answered
+  questions ride along on every call (`buildAnswered`) so the AI never
+  re-asks something the user has settled.
+- **No key → no questions:** the question engine requires a provider key
+  (it's inherently AI). Without one, the app is the plain fixed form.
 
 ## 5. The MCP server (✅ shipped 2026-07-23)
 
@@ -161,8 +174,11 @@ single registry both the UI and the server route read.
 
 ## 6. What we still refuse to build (until data says otherwise)
 
-- Requirement Graph Engine (dynamic question DAG) — the LLM "next best
-  question" is the cheap approximation; graduate only if it proves out.
+- **Deeper than two levels** — the question engine (§4) is now the
+  dynamic, subject-aware elicitation the project was named for, but capped
+  at overall → sections → per-section questions. Unlimited recursive
+  drill-down (sub-sections of sub-sections) waits until the two-level
+  version proves useful.
 - Coding domain — the original wedge; revisit after image+video validates
   (the MCP server is the natural bridge when it happens).
 - Accounts — localStorage until someone actually asks to log in.

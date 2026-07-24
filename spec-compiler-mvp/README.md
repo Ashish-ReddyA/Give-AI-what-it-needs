@@ -43,44 +43,54 @@ lib/compilers.ts        Midjourney / DALL·E / Higgsfield (image)
 lib/compilers-video.ts  Higgsfield / Veo 3 / Runway (video)
 lib/outcomes.ts         outcome log types + summarizeOutcomes() — the
                         hypothesis math (complete vs incomplete specs)
+lib/questions.ts        question-engine model + composeSubject (weaves
+                        answers into the subject the compilers see)
 lib/store.ts            localStorage persistence, defensively sanitized
                         field-by-field on load (corrupt data → defaults)
 lib/__tests__/          vitest suite for all of the above
-components/             fields (shared primitives) · QuestionFlow ·
-                        VideoQuestionFlow · CompletenessMeter ·
+components/             fields · QuestionFlow · VideoQuestionFlow ·
+                        ProviderKeyBar · QuestionEngine · CompletenessMeter ·
                         ResultsPanel · OutcomeTracker · OutcomeStats
 app/page.tsx            domain toggle + state + persistence + compile gate
 ```
 
 No database. The compilers are pure template functions, and that's
 permanent (deterministic core, intelligent edges — see DESIGN.md §3). The
-one LLM call in the app is the optional **AI assist** below.
+AI's job is the **question engine** below.
 
-## AI assist (BYOK — any provider)
+## The question engine (BYOK — any provider)
+
+**The AI asks; it doesn't fill a form.** Type an idea, and the AI generates
+the questions *that idea* needs — "a cat playing with a ball" → cat pose?
+cat color? the ball? — each with tap-or-type options. Hit **Deep Analysis**
+and it breaks the idea into parts (Cat · Ball · Background); click one and
+it asks detailed questions about just that part. Every answer weaves into
+the compiled prompt. The fixed technical picks (aspect ratio, duration,
+style…) stay as instant taps — the AI only asks the subject questions.
 
 Pick a provider (Anthropic, OpenAI, NVIDIA, Google, Groq, Mistral,
-OpenRouter, or a custom OpenAI-compatible endpoint), paste **your own** key
-for it, and one model call parses your idea to pre-fill the fields it
-already answers — so the form never re-asks what you typed — and suggests
-the next best question, tailored to the idea. One provider at a time.
+OpenRouter, or a custom OpenAI-compatible endpoint), paste **your own** key,
+one at a time.
 
-- **Where the key goes:** Anthropic is called **browser-direct**, so the
-  key never leaves your browser. Every other provider blocks browser calls
-  (CORS), so its request goes through the app's own `/api/analyze` proxy —
-  a pure pass-through that forwards to the provider and **never stores the
-  key**. Either way the key lives only in your browser's localStorage;
-  there is no app-side API key.
-- **It only fills empty fields** — your explicit picks are never
-  overwritten, and extraction is deliberately conservative (it won't guess
-  a format from "for Instagram").
-- **Fully optional** — without a key the app is the same static form.
+- **Where the key goes:** Anthropic is **browser-direct**, so the key never
+  leaves your browser. Every other provider blocks browser calls (CORS), so
+  its request goes through the app's own `/api/analyze` proxy — a pure
+  pass-through that forwards to the provider and **never stores the key**.
+  The key lives only in your browser's localStorage; there is no app-side
+  API key.
+- **Skippable & additive** — answer only what matters; nothing is
+  overwritten; the whole question tree persists across refresh.
+- **Needs a key** — the questions are AI-generated. Without one, the app is
+  the plain fixed form.
 
 ```
-lib/providers.ts        the provider registry (UI + proxy read it) + SSRF guard
-lib/analyze-core.ts     types + merge logic (fills empty fields only) — no SDK
-lib/analyze.ts          dispatch: Anthropic browser-direct, others via proxy
+lib/providers.ts        provider registry (UI + proxy read it) + SSRF guard
+lib/analyze-core.ts     "already answered" helpers — no SDK
+lib/analyze.ts          3 generators: overall / sections / section questions;
+                        Anthropic browser-direct, others via proxy
 app/api/analyze/route   the same-origin proxy for OpenAI-compatible providers
-components/AssistPanel   provider picker + key/model + next-question hint
+components/ProviderKeyBar   provider picker + key/model
+components/QuestionEngine    the dynamic Q&A + Deep Analysis drill-down
 ```
 
 ## Design decisions worth knowing

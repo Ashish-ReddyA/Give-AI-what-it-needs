@@ -1,11 +1,9 @@
 // localStorage persistence with defensive loading.
 //
-// Everything read back from storage is sanitized field-by-field: a corrupt
-// blob, an old schema, or a hand-edited value degrades to defaults instead
-// of crashing the app. Keys are versioned so future schema changes can
-// migrate or start fresh deliberately.
-//
-// Storage is injectable (KV) so all of this is unit-testable in node.
+// Everything read back is sanitized field-by-field: a corrupt blob, an old
+// schema, or a hand-edited value degrades to defaults instead of crashing.
+// Keys are versioned so future schema changes are deliberate. Storage is
+// injectable (KV) so all of this is unit-testable in node.
 
 import {
   Domain,
@@ -15,6 +13,7 @@ import {
   EMPTY_VIDEO_SPEC,
 } from "./types";
 import { OutcomeRecord, PendingCopy, OutcomeResult } from "./outcomes";
+import { QAState, EMPTY_QA, Question, Section } from "./questions";
 
 export interface KV {
   getItem(key: string): string | null;
@@ -22,7 +21,7 @@ export interface KV {
   removeItem(key: string): void;
 }
 
-const STATE_KEY = "spec-compiler.state.v1";
+const STATE_KEY = "spec-compiler.state.v2";
 const OUTCOMES_KEY = "spec-compiler.outcomes.v1";
 const MAX_OUTCOMES = 500;
 
@@ -35,8 +34,8 @@ export interface PersistedState {
   imageSpec: ImageSpec;
   videoSpec: VideoSpec;
   pending: PendingCopy[];
-  /** Per-domain: did the AI assist fill anything for the current spec? */
-  assisted: { image: boolean; video: boolean };
+  /** The AI question tree + answers, per domain. */
+  qa: { image: QAState; video: QAState };
 }
 
 // ---------- sanitizers ----------
@@ -73,6 +72,56 @@ function sanitizeVideoSpec(raw: unknown): VideoSpec {
     nonNegotiable: str(r.nonNegotiable),
     audio: str(r.audio),
     exclusions: str(r.exclusions),
+  };
+}
+
+function sanitizeQuestion(raw: unknown): Question | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || typeof r.question !== "string") return null;
+  if (!r.id || !r.question) return null;
+  const options = Array.isArray(r.options)
+    ? r.options.filter((o): o is string => typeof o === "string")
+    : [];
+  return { id: r.id, question: r.question, options };
+}
+
+function sanitizeSection(raw: unknown): Section | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || typeof r.label !== "string") return null;
+  if (!r.id || !r.label) return null;
+  return { id: r.id, label: r.label };
+}
+
+function sanitizeQuestions(raw: unknown): Question[] {
+  return Array.isArray(raw)
+    ? raw.map(sanitizeQuestion).filter((q): q is Question => q !== null)
+    : [];
+}
+
+function sanitizeQA(raw: unknown): QAState {
+  if (typeof raw !== "object" || raw === null) return { ...EMPTY_QA };
+  const r = raw as Record<string, unknown>;
+  const sectionQuestions: Record<string, Question[]> = {};
+  if (typeof r.sectionQuestions === "object" && r.sectionQuestions !== null) {
+    for (const [k, v] of Object.entries(r.sectionQuestions)) {
+      sectionQuestions[k] = sanitizeQuestions(v);
+    }
+  }
+  const answers: Record<string, string> = {};
+  if (typeof r.answers === "object" && r.answers !== null) {
+    for (const [k, v] of Object.entries(r.answers)) {
+      if (typeof v === "string") answers[k] = v;
+    }
+  }
+  return {
+    overall: sanitizeQuestions(r.overall),
+    sections: Array.isArray(r.sections)
+      ? r.sections.map(sanitizeSection).filter((s): s is Section => s !== null)
+      : [],
+    sectionQuestions,
+    answers,
   };
 }
 
@@ -130,22 +179,18 @@ export function loadPersistedState(kv: KV | null = defaultKV()): PersistedState 
   }
   if (typeof parsed !== "object" || parsed === null) return null;
   const r = parsed as Record<string, unknown>;
-  const assisted =
-    typeof r.assisted === "object" && r.assisted !== null
-      ? (r.assisted as Record<string, unknown>)
-      : {};
+  const qaRaw =
+    typeof r.qa === "object" && r.qa !== null ? (r.qa as Record<string, unknown>) : {};
   return {
     domain: oneOf(r.domain, ["image", "video"] as const) ?? "image",
     imageSpec: sanitizeImageSpec(r.imageSpec),
     videoSpec: sanitizeVideoSpec(r.videoSpec),
     pending: Array.isArray(r.pending)
-      ? r.pending
-          .map(sanitizePending)
-          .filter((p): p is PendingCopy => p !== null)
+      ? r.pending.map(sanitizePending).filter((p): p is PendingCopy => p !== null)
       : [],
-    assisted: {
-      image: assisted.image === true,
-      video: assisted.video === true,
+    qa: {
+      image: sanitizeQA(qaRaw.image),
+      video: sanitizeQA(qaRaw.video),
     },
   };
 }
@@ -158,8 +203,8 @@ export function savePersistedState(
   try {
     kv.setItem(STATE_KEY, JSON.stringify(state));
   } catch {
-    // Quota/private-mode failures are non-fatal — the app keeps working
-    // in memory; persistence just doesn't stick.
+    // Quota/private-mode failures are non-fatal — the app keeps working in
+    // memory; persistence just doesn't stick.
   }
 }
 
@@ -176,9 +221,7 @@ export function loadOutcomes(kv: KV | null = defaultKV()): OutcomeRecord[] {
     return [];
   }
   if (!Array.isArray(parsed)) return [];
-  return parsed
-    .map(sanitizeOutcome)
-    .filter((o): o is OutcomeRecord => o !== null);
+  return parsed.map(sanitizeOutcome).filter((o): o is OutcomeRecord => o !== null);
 }
 
 export function saveOutcomes(

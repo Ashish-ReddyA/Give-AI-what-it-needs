@@ -1,58 +1,23 @@
 "use client";
 
-// BYOK AI assist — bring a key from ANY supported provider (one at a time).
-// It parses the idea so the form never re-asks what you already typed, and
-// suggests the next-best question. Strictly optional; without a key the app
-// is the same static form.
-//
-// Key handling:
-//  - Anthropic: sent browser → api.anthropic.com directly; never touches
-//    our server.
-//  - Other providers: sent to our same-origin /api/analyze proxy, which
-//    forwards it to the provider and never stores it (those providers block
-//    direct browser calls).
-// Either way the key lives only in this browser's localStorage.
+// BYOK key management — one provider at a time. Owns the localStorage
+// config and reports the active config up so the question engine can use
+// it. No analysis button here; asking is the question engine's job.
 
 import { useEffect, useState } from "react";
-import { Sparkles, Loader2, X } from "lucide-react";
-import { Domain, ImageSpec, VideoSpec } from "@/lib/types";
-import { Analysis } from "@/lib/analyze-core";
+import { Sparkles, X } from "lucide-react";
 import {
   PROVIDERS,
   PROVIDER_LIST,
   DEFAULT_PROVIDER_ID,
+  ProviderConfig,
 } from "@/lib/providers";
 
 const STORAGE_KEY = "spec-compiler.provider.v1";
 const LEGACY_ANTHROPIC_KEY = "spec-compiler.anthropic-key";
 
-interface ProviderConfig {
-  providerId: string;
-  apiKey: string;
-  model: string;
-  baseUrl: string;
-}
-
 interface Props {
-  domain: Domain;
-  spec: ImageSpec | VideoSpec;
-  onAnalysis: (a: Analysis) => { filled: string[] };
-}
-
-interface Hint {
-  filled: string[];
-  question: string | null;
-}
-
-function friendlyError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (/401|403|authentication|unauthor/i.test(msg)) {
-    return "The provider rejected that key — check it and try again.";
-  }
-  if (/429|rate.?limit/i.test(msg)) {
-    return "Rate-limited by the provider — wait a moment and retry.";
-  }
-  return msg.slice(0, 180);
+  onConfigChange: (config: ProviderConfig | null) => void;
 }
 
 function loadConfig(): ProviderConfig | null {
@@ -69,44 +34,32 @@ function loadConfig(): ProviderConfig | null {
         };
       }
     }
-    // Migrate the old Anthropic-only key.
     const legacy = window.localStorage.getItem(LEGACY_ANTHROPIC_KEY);
-    if (legacy) {
-      return { providerId: "anthropic", apiKey: legacy, model: "", baseUrl: "" };
-    }
+    if (legacy) return { providerId: "anthropic", apiKey: legacy, model: "", baseUrl: "" };
   } catch {
-    /* corrupt storage — fall through to no config */
+    /* corrupt storage → no config */
   }
   return null;
 }
 
-export default function AssistPanel({ domain, spec, onAnalysis }: Props) {
+export default function ProviderKeyBar({ onConfigChange }: Props) {
   const [config, setConfig] = useState<ProviderConfig | null>(null);
-  // Draft inputs (before Save)
   const [providerId, setProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
   const [draftKey, setDraftKey] = useState("");
   const [draftModel, setDraftModel] = useState("");
   const [draftBaseUrl, setDraftBaseUrl] = useState("");
-
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState<Hint | null>(null);
 
   useEffect(() => {
     const loaded = loadConfig();
     if (loaded) {
       setConfig(loaded);
       setProviderId(loaded.providerId);
+      onConfigChange(loaded);
     } else {
       setDraftModel(PROVIDERS[DEFAULT_PROVIDER_ID].defaultModel);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // A hint about one domain's spec is meaningless in the other.
-  useEffect(() => {
-    setHint(null);
-    setError(null);
-  }, [domain]);
 
   const provider = PROVIDERS[providerId];
   const active = config && config.providerId === providerId ? config : null;
@@ -116,10 +69,9 @@ export default function AssistPanel({ domain, spec, onAnalysis }: Props) {
     setDraftKey("");
     setDraftModel(PROVIDERS[id].defaultModel);
     setDraftBaseUrl("");
-    setError(null);
   };
 
-  const saveConfig = () => {
+  const save = () => {
     const key = draftKey.trim();
     if (!key) return;
     const next: ProviderConfig = {
@@ -135,51 +87,24 @@ export default function AssistPanel({ domain, spec, onAnalysis }: Props) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       window.localStorage.removeItem(LEGACY_ANTHROPIC_KEY);
     } catch {
-      /* non-fatal: keep it in memory for this session */
+      /* keep in memory for this session */
     }
     setConfig(next);
     setDraftKey("");
-    setError(null);
+    onConfigChange(next);
   };
 
-  const clearConfig = () => {
+  const clear = () => {
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch {
       /* ignore */
     }
     setConfig(null);
-    setHint(null);
-    setError(null);
     setDraftModel(PROVIDERS[providerId].defaultModel);
+    onConfigChange(null);
   };
 
-  const analyze = async () => {
-    if (!active || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const { analyzeImageIdea, analyzeVideoIdea } = await import("@/lib/analyze");
-      const opts = {
-        providerId: active.providerId,
-        apiKey: active.apiKey,
-        model: active.model,
-        baseUrl: active.baseUrl,
-      };
-      const analysis =
-        domain === "image"
-          ? await analyzeImageIdea(spec as ImageSpec, opts)
-          : await analyzeVideoIdea(spec as VideoSpec, opts);
-      const { filled } = onAnalysis(analysis);
-      setHint({ filled, question: analysis.nextQuestion });
-    } catch (e) {
-      setError(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const hasIdea = spec.idea.trim().length > 0;
   const keyRoute =
     provider.kind === "anthropic"
       ? "Sent to Anthropic directly — never touches our server."
@@ -189,18 +114,15 @@ export default function AssistPanel({ domain, spec, onAnalysis }: Props) {
     <div className="border border-line rounded-sm bg-paperRaised p-4">
       <div className="flex items-center justify-between mb-2">
         <span className="font-mono text-xs uppercase tracking-wide text-inkMuted flex items-center gap-1.5">
-          <Sparkles size={12} /> AI assist
+          <Sparkles size={12} /> AI key
         </span>
         <span className="font-mono text-[10px] text-inkMuted">
           bring your own key
         </span>
       </div>
 
-      {/* Provider picker — always visible */}
       <label className="block mb-2">
-        <span className="font-mono text-[10px] uppercase text-inkMuted">
-          Provider
-        </span>
+        <span className="font-mono text-[10px] uppercase text-inkMuted">Provider</span>
         <select
           value={providerId}
           onChange={(e) => onProviderChange(e.target.value)}
@@ -215,43 +137,22 @@ export default function AssistPanel({ domain, spec, onAnalysis }: Props) {
       </label>
 
       {active ? (
-        <>
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[10px] text-inkMuted">
+            {provider.label}
+            {provider.kind === "openai-compat" && active.model
+              ? ` · ${active.model}`
+              : ""}{" "}
+            key saved
+          </span>
           <button
             type="button"
-            onClick={analyze}
-            disabled={!hasIdea || busy}
-            className="w-full py-2 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+            onClick={clear}
+            className="flex items-center gap-1 font-mono text-[10px] text-inkMuted hover:text-risk transition-colors"
           >
-            {busy ? (
-              <>
-                <Loader2 size={12} className="animate-spin" /> analyzing…
-              </>
-            ) : (
-              <>Pre-fill from idea</>
-            )}
+            <X size={10} /> clear key
           </button>
-          <div className="flex items-center justify-between mt-1.5">
-            <span className="font-mono text-[10px] text-inkMuted">
-              {provider.label}
-              {provider.kind === "openai-compat" && active.model
-                ? ` · ${active.model}`
-                : ""}{" "}
-              key saved
-            </span>
-            <button
-              type="button"
-              onClick={clearConfig}
-              className="flex items-center gap-1 font-mono text-[10px] text-inkMuted hover:text-risk transition-colors"
-            >
-              <X size={10} /> clear key
-            </button>
-          </div>
-          {!hasIdea && (
-            <p className="font-mono text-[10px] text-inkMuted mt-1">
-              type an idea first — the assist extracts only what you wrote
-            </p>
-          )}
-        </>
+        </div>
       ) : (
         <>
           {provider.editableBaseUrl && (
@@ -275,13 +176,13 @@ export default function AssistPanel({ domain, spec, onAnalysis }: Props) {
               type="password"
               value={draftKey}
               onChange={(e) => setDraftKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && saveConfig()}
+              onKeyDown={(e) => e.key === "Enter" && save()}
               placeholder={provider.keyHint}
               className="flex-1 bg-paper border border-line rounded-sm px-3 py-1.5 text-xs font-mono text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
             />
             <button
               type="button"
-              onClick={saveConfig}
+              onClick={save}
               disabled={!draftKey.trim()}
               className="px-3 py-1.5 font-mono text-xs uppercase border border-line rounded-sm text-ink hover:border-ink disabled:opacity-40 transition-colors"
             >
@@ -305,26 +206,6 @@ export default function AssistPanel({ domain, spec, onAnalysis }: Props) {
             )}
           </p>
         </>
-      )}
-
-      {error && <p className="font-mono text-[11px] text-risk mt-2">{error}</p>}
-
-      {hint && (
-        <div className="mt-3 pt-3 border-t border-dashed border-line space-y-1.5">
-          <p className="font-mono text-[11px] text-ink">
-            {hint.filled.length > 0
-              ? `Pre-filled: ${hint.filled.join(", ")}. Your own picks were not touched.`
-              : "Nothing new to pre-fill — the idea didn't state any unanswered field."}
-          </p>
-          {hint.question && (
-            <p className="font-body text-xs text-inkMuted">
-              <span className="font-mono uppercase text-[10px]">
-                next best question →{" "}
-              </span>
-              {hint.question}
-            </p>
-          )}
-        </div>
       )}
     </div>
   );

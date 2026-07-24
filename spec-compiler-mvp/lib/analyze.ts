@@ -1,117 +1,91 @@
-// The one LLM call in the app (Phase 2a), now provider-agnostic (Phase 2a+).
+// The AI question engine. The model reads the user's idea and GENERATES
+// questions about the subject — it doesn't pre-fill a fixed form.
 //
-// Claude — or whichever provider the user brings a key for — does only what
-// the template compilers can't: extract what the idea ALREADY specifies (so
-// the form never re-asks answered questions) and propose the next-best
-// question. Compilation stays 100% deterministic; this module never writes
-// a prompt.
+// Three generators, all provider-agnostic:
+//   generateOverallQuestions  → level-1 questions for the whole idea
+//   generateSections          → the idea broken into parts (Cat, Ball, …)
+//   generateSectionQuestions  → detailed questions about one part
 //
-// Two routes, chosen by provider kind:
-//  - anthropic:      browser → api.anthropic.com directly (the SDK sets the
-//                    CORS opt-in header). The key never leaves the browser.
-//  - openai-compat:  browser → /api/analyze (same-origin) → the provider.
-//                    Needed because those providers block direct browser
-//                    calls; the proxy never stores the key.
+// Two transport routes, chosen by provider kind (same as before):
+//   anthropic     → browser → api.anthropic.com directly (key stays local),
+//                   structured outputs via messages.parse + zodOutputFormat.
+//   openai-compat → browser → /api/analyze proxy → the provider (those
+//                   providers block direct browser calls), JSON mode +
+//                   client-side validation.
 //
-// This module is dynamically imported, so the Anthropic SDK stays in a lazy
-// chunk loaded only when the assist is used.
+// Dynamically imported, so the Anthropic SDK stays in a lazy chunk.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-// The SDK's zodOutputFormat requires zod v4 schemas.
 import { z } from "zod/v4";
-import {
-  ImageSpec,
-  VideoSpec,
-  AspectFormat,
-  ImageStyle,
-  VideoDuration,
-  CameraMotion,
-} from "./types";
-import {
-  Analysis,
-  ImageAnalysis,
-  VideoAnalysis,
-  answeredImageFields,
-  answeredVideoFields,
-} from "./analyze-core";
+import { Domain } from "./types";
 import { PROVIDERS } from "./providers";
+import { Question, Section } from "./questions";
 
-// ---- Anthropic structured-output schemas ----
+// ---- schemas (Anthropic structured outputs) ----
 
-const ImageAnalysisSchema = z.object({
-  format: z.enum(["square", "landscape", "portrait"]).nullable(),
-  style: z.enum(["realistic", "anime", "3d", "illustration"]).nullable(),
-  nonNegotiable: z.string().nullable(),
-  exclusions: z.string().nullable(),
-  formatUse: z.string().nullable(),
-  nextQuestion: z.string().nullable(),
+const QuestionsSchema = z.object({
+  questions: z.array(
+    z.object({
+      id: z.string(),
+      question: z.string(),
+      options: z.array(z.string()),
+    })
+  ),
 });
 
-const VideoAnalysisSchema = z.object({
-  format: z.enum(["square", "landscape", "portrait"]).nullable(),
-  duration: z.enum(["short", "medium", "long"]).nullable(),
-  motion: z.enum(["static", "slow", "dynamic", "handheld"]).nullable(),
-  nonNegotiable: z.string().nullable(),
-  audio: z.string().nullable(),
-  exclusions: z.string().nullable(),
-  nextQuestion: z.string().nullable(),
+const SectionsSchema = z.object({
+  sections: z.array(z.object({ id: z.string(), label: z.string() })),
 });
 
-// ---- Prompts (provider-neutral) ----
+// ---- prompts (provider-neutral) ----
 
-const SHARED_RULES = `Return ONLY what the idea explicitly states or unambiguously implies — never invent, embellish, or guess. When a field is not clearly specified, return null.
+const CONTEXT_NOTE = `The user message is JSON: { idea, alreadyAnswered }. Never ask about anything already present in alreadyAnswered. Options must be short, self-contained descriptive phrases that read naturally when appended to the subject (e.g. "orange tabby fur", "mid-pounce", "small red rubber ball", "soft window light") — not one-word fragments that only make sense next to the question. Leave options as [] for genuinely open questions.`;
 
-The user message is JSON: { idea, alreadyAnswered }. Fields present in alreadyAnswered are settled — do not extract them again, and do not ask about them in nextQuestion.
+function overallSystem(domain: Domain): string {
+  const medium = domain === "video" ? "video clip" : "image";
+  return `You help a user specify an AI-generated ${medium} BEFORE they spend credits generating it. Given their rough idea, produce the few highest-impact questions whose answers most change whether the result matches what they picture.
 
-nextQuestion: the ONE question whose answer would most reduce the risk of a wasted generation for THIS specific idea, phrased for the user, concrete rather than generic. Null only if nothing worth asking remains.`;
+Focus on the SUBJECT and scene: appearance, colors, materials, pose/action, key objects, setting, and mood.${
+    domain === "video" ? " You may ask about the action/motion of the subject, but NOT camera moves or clip length." : ""
+  } Do NOT ask about aspect ratio, resolution, ${
+    domain === "video" ? "duration, camera framing, " : ""
+  }file format, or render settings — those are handled elsewhere.
 
-const IMAGE_SYSTEM = `You extract a structured image-generation spec from a user's raw idea.
+Ask 3 to 6 questions, ordered by impact. ${CONTEXT_NOTE}`;
+}
 
-${SHARED_RULES}
+function sectionsSystem(domain: Domain): string {
+  const medium = domain === "video" ? "video" : "image";
+  return `Break the user's ${medium} idea into the distinct elements they might want to refine separately — each main subject, important objects, and the background/setting (plus lighting or mood when they'd matter). Return 3 to 7 sections, ordered by how much each affects the result, each with a short snake_case id and a 1-2 word display label (e.g. "Cat", "Ball", "Background"). Do not include aspect ratio, duration, or technical settings as sections.`;
+}
 
-Field rules:
-- format: only when the idea names an orientation or ratio ("vertical", "16:9", "square") or a surface with a fixed shape ("YouTube thumbnail" → landscape, "Instagram story" / "TikTok" → portrait). A bare platform name ("for Instagram") is NOT enough — return null.
-- style: realistic | anime | 3d | illustration — only when stated or strongly implied ("photo of" → realistic, "anime girl" → anime).
-- nonNegotiable: the single detail the user emphasizes (must / needs / has to / make sure / exact names, colors, counts). Short phrase in the user's own words.
-- exclusions: things the user says to avoid ("no text", "without watermark"), comma-separated.
-- formatUse: what the image is for, if mentioned ("Instagram post", "album cover").`;
+function sectionQuestionsSystem(domain: Domain, sectionLabel: string): string {
+  const medium = domain === "video" ? "video clip" : "image";
+  return `The user wants to refine the "${sectionLabel}" part of their AI-generated ${medium}. Ask 3 to 6 detailed questions specifically about "${sectionLabel}" — its appearance, color, material, size, position, texture, and (if it's a subject) pose or behavior.
 
-const VIDEO_SYSTEM = `You extract a structured video-generation spec from a user's raw idea. Video runs burn real credits, so precision matters more than coverage.
+Ask only about "${sectionLabel}", nothing else. Order by impact. ${CONTEXT_NOTE}`;
+}
 
-${SHARED_RULES}
+const QUESTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"questions":[{"id":"short_snake_id","question":"...","options":["...","..."]}]}. No prose, no markdown code fences.`;
+const SECTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"sections":[{"id":"short_snake_id","label":"Cat"}]}. No prose, no markdown code fences.`;
 
-Field rules:
-- format: only when the idea names an orientation or ratio, or a surface with a fixed shape ("TikTok" / "reel" → portrait, "YouTube" → landscape). A bare platform name is NOT enough if the shape is ambiguous.
-- duration: short (~5s) | medium (~8–10s) | long (15s+) — only when the idea gives a length.
-- motion: static | slow | dynamic | handheld — only when the idea describes camera work ("locked-off", "slow pan", "tracking shot", "handheld").
-- nonNegotiable: the single detail the user emphasizes. Short phrase in their own words.
-- audio: dialogue or sound the clip must contain, if stated ("she says 'enjoy'", "rain sounds"). This matters — it changes which model can be used.
-- exclusions: things the user says to avoid, comma-separated.`;
-
-// OpenAI-compatible providers use JSON mode, which guarantees valid JSON but
-// not a schema — so we spell the exact key set out and validate client-side.
-const IMAGE_JSON_CONTRACT = `\n\nRespond with ONLY a JSON object with exactly these keys: "format", "style", "nonNegotiable", "exclusions", "formatUse", "nextQuestion". Use null for any field not clearly specified. No prose, no markdown code fences.`;
-const VIDEO_JSON_CONTRACT = `\n\nRespond with ONLY a JSON object with exactly these keys: "format", "duration", "motion", "nonNegotiable", "audio", "exclusions", "nextQuestion". Use null for any field not clearly specified. No prose, no markdown code fences.`;
-
-// ---- Options ----
+// ---- options / transport ----
 
 export interface AnalyzeOptions {
   providerId: string;
   apiKey: string;
   /** openai-compat: model id (editable in the UI). Ignored for Anthropic. */
   model?: string;
-  /** custom provider only: user-supplied base URL. */
+  /** custom provider only. */
   baseUrl?: string;
-  /** Test hook: injected fetch. */
+  /** Test hook. */
   fetch?: typeof globalThis.fetch;
 }
 
 function userMessage(idea: string, alreadyAnswered: Record<string, string>) {
   return JSON.stringify({ idea: idea.trim(), alreadyAnswered });
 }
-
-// ---- Anthropic path (browser-direct) ----
 
 function anthropicClient(opts: AnalyzeOptions): Anthropic {
   return new Anthropic({
@@ -121,48 +95,6 @@ function anthropicClient(opts: AnalyzeOptions): Anthropic {
     maxRetries: 1,
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
   });
-}
-
-function guard<T>(stopReason: string | null, parsed: T | null | undefined): T {
-  if (stopReason === "refusal") {
-    throw new Error("The model declined to analyze this idea.");
-  }
-  if (!parsed) throw new Error("No structured output returned — try again.");
-  return parsed;
-}
-
-async function anthropicAnalyze<T>(
-  system: string,
-  spec: { idea: string },
-  answered: Record<string, string>,
-  schema: z.ZodType<T>,
-  opts: AnalyzeOptions
-): Promise<T> {
-  const client = anthropicClient(opts);
-  const message = await client.messages.parse({
-    model: "claude-opus-4-8",
-    max_tokens: 1024,
-    system,
-    messages: [{ role: "user", content: userMessage(spec.idea, answered) }],
-    output_config: { format: zodOutputFormat(schema) },
-  });
-  return guard(message.stop_reason, message.parsed_output as T | null);
-}
-
-// ---- OpenAI-compatible path (via /api/analyze proxy) ----
-
-const IMAGE_FORMATS: readonly AspectFormat[] = ["square", "landscape", "portrait"];
-const IMAGE_STYLES: readonly ImageStyle[] = ["realistic", "anime", "3d", "illustration"];
-const VIDEO_DURATIONS: readonly VideoDuration[] = ["short", "medium", "long"];
-const VIDEO_MOTIONS: readonly CameraMotion[] = ["static", "slow", "dynamic", "handheld"];
-
-function pick<T extends string>(v: unknown, allowed: readonly T[]): T | null {
-  return typeof v === "string" && (allowed as readonly string[]).includes(v)
-    ? (v as T)
-    : null;
-}
-function text(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
 function extractJson(raw: string): Record<string, unknown> {
@@ -186,17 +118,35 @@ function extractJson(raw: string): Record<string, unknown> {
   );
 }
 
-async function proxyComplete(
+// One structured call, routed by provider kind. Returns a plain object.
+async function runStructured(
   system: string,
-  spec: { idea: string },
+  jsonContract: string,
+  idea: string,
   answered: Record<string, string>,
+  anthropicSchema: z.ZodType,
   opts: AnalyzeOptions
 ): Promise<Record<string, unknown>> {
   const provider = PROVIDERS[opts.providerId];
-  const model = (opts.model ?? "").trim() || provider?.defaultModel || "";
-  if (!model) {
-    throw new Error("Pick a model for this provider first.");
+
+  if (provider?.kind === "anthropic") {
+    const client = anthropicClient(opts);
+    const message = await client.messages.parse({
+      model: "claude-opus-4-8",
+      max_tokens: 1500,
+      system,
+      messages: [{ role: "user", content: userMessage(idea, answered) }],
+      output_config: { format: zodOutputFormat(anthropicSchema) },
+    });
+    if (message.stop_reason === "refusal") {
+      throw new Error("The model declined this idea.");
+    }
+    return (message.parsed_output as Record<string, unknown>) ?? {};
   }
+
+  // openai-compat → proxy
+  const model = (opts.model ?? "").trim() || provider?.defaultModel || "";
+  if (!model) throw new Error("Pick a model for this provider first.");
   const doFetch = opts.fetch ?? fetch;
   const resp = await doFetch("/api/analyze", {
     method: "POST",
@@ -205,64 +155,108 @@ async function proxyComplete(
       provider: opts.providerId,
       model,
       baseUrl: opts.baseUrl,
-      system,
-      user: userMessage(spec.idea, answered),
+      system: system + jsonContract,
+      user: userMessage(idea, answered),
     }),
   });
   const data = (await resp.json()) as { text?: string; error?: string };
-  if (!resp.ok) {
-    throw new Error(data.error || `Request failed (${resp.status}).`);
-  }
+  if (!resp.ok) throw new Error(data.error || `Request failed (${resp.status}).`);
   return extractJson(data.text ?? "");
 }
 
-// ---- Public API: dispatch on provider kind ----
+// ---- normalization ----
 
-export async function analyzeImageIdea(
-  spec: ImageSpec,
-  opts: AnalyzeOptions
-): Promise<Analysis> {
-  const provider = PROVIDERS[opts.providerId];
-  const answered = answeredImageFields(spec);
-
-  if (provider?.kind === "anthropic") {
-    const a = await anthropicAnalyze(IMAGE_SYSTEM, spec, answered, ImageAnalysisSchema, opts);
-    return { domain: "image", ...a };
-  }
-
-  const j = await proxyComplete(IMAGE_SYSTEM + IMAGE_JSON_CONTRACT, spec, answered, opts);
-  const a: ImageAnalysis = {
-    format: pick(j.format, IMAGE_FORMATS),
-    style: pick(j.style, IMAGE_STYLES),
-    nonNegotiable: text(j.nonNegotiable),
-    exclusions: text(j.exclusions),
-    formatUse: text(j.formatUse),
-    nextQuestion: text(j.nextQuestion),
-  };
-  return { domain: "image", ...a };
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
 }
 
-export async function analyzeVideoIdea(
-  spec: VideoSpec,
+function normalizeQuestions(raw: unknown, idPrefix: string): Question[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: Question[] = [];
+  raw.forEach((item, i) => {
+    if (!item || typeof item !== "object") return;
+    const r = item as Record<string, unknown>;
+    const question = str(r.question);
+    if (!question) return;
+    let id = `${idPrefix}${str(r.id) || `q${i}`}`;
+    while (seen.has(id)) id = `${id}_`;
+    seen.add(id);
+    const options = Array.isArray(r.options)
+      ? r.options.map(str).filter(Boolean).slice(0, 6)
+      : [];
+    out.push({ id, question, options });
+  });
+  return out;
+}
+
+function normalizeSections(raw: unknown): Section[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: Section[] = [];
+  raw.forEach((item, i) => {
+    if (!item || typeof item !== "object") return;
+    const r = item as Record<string, unknown>;
+    const label = str(r.label);
+    if (!label) return;
+    let id = str(r.id) || `s${i}`;
+    while (seen.has(id)) id = `${id}_`;
+    seen.add(id);
+    out.push({ id, label });
+  });
+  return out.slice(0, 8);
+}
+
+// ---- public generators ----
+
+export async function generateOverallQuestions(
+  domain: Domain,
+  idea: string,
+  answered: Record<string, string>,
   opts: AnalyzeOptions
-): Promise<Analysis> {
-  const provider = PROVIDERS[opts.providerId];
-  const answered = answeredVideoFields(spec);
+): Promise<Question[]> {
+  const obj = await runStructured(
+    overallSystem(domain),
+    QUESTIONS_CONTRACT,
+    idea,
+    answered,
+    QuestionsSchema,
+    opts
+  );
+  return normalizeQuestions(obj.questions, "o_");
+}
 
-  if (provider?.kind === "anthropic") {
-    const a = await anthropicAnalyze(VIDEO_SYSTEM, spec, answered, VideoAnalysisSchema, opts);
-    return { domain: "video", ...a };
-  }
+export async function generateSections(
+  domain: Domain,
+  idea: string,
+  answered: Record<string, string>,
+  opts: AnalyzeOptions
+): Promise<Section[]> {
+  const obj = await runStructured(
+    sectionsSystem(domain),
+    SECTIONS_CONTRACT,
+    idea,
+    answered,
+    SectionsSchema,
+    opts
+  );
+  return normalizeSections(obj.sections);
+}
 
-  const j = await proxyComplete(VIDEO_SYSTEM + VIDEO_JSON_CONTRACT, spec, answered, opts);
-  const a: VideoAnalysis = {
-    format: pick(j.format, IMAGE_FORMATS),
-    duration: pick(j.duration, VIDEO_DURATIONS),
-    motion: pick(j.motion, VIDEO_MOTIONS),
-    nonNegotiable: text(j.nonNegotiable),
-    audio: text(j.audio),
-    exclusions: text(j.exclusions),
-    nextQuestion: text(j.nextQuestion),
-  };
-  return { domain: "video", ...a };
+export async function generateSectionQuestions(
+  domain: Domain,
+  idea: string,
+  section: Section,
+  answered: Record<string, string>,
+  opts: AnalyzeOptions
+): Promise<Question[]> {
+  const obj = await runStructured(
+    sectionQuestionsSystem(domain, section.label),
+    QUESTIONS_CONTRACT,
+    idea,
+    answered,
+    QuestionsSchema,
+    opts
+  );
+  return normalizeQuestions(obj.questions, `s_${section.id}_`);
 }

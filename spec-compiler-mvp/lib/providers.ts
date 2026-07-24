@@ -121,6 +121,16 @@ export const PROVIDER_LIST: Provider[] = Object.values(PROVIDERS);
 
 export const DEFAULT_PROVIDER_ID = "anthropic";
 
+/** The user's active BYOK choice — one provider + its key at a time. */
+export interface ProviderConfig {
+  providerId: string;
+  apiKey: string;
+  /** openai-compat model id (editable); "" for Anthropic. */
+  model: string;
+  /** custom provider base URL; "" otherwise. */
+  baseUrl: string;
+}
+
 /** SSRF guard for the custom provider's user-supplied base URL. Only https,
  * and never pointed at loopback / private / link-local hosts. */
 export function isSafeBaseUrl(raw: string): boolean {

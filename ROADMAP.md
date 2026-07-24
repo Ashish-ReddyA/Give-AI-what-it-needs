@@ -136,6 +136,7 @@ intake helps and want an end-to-end demo.
 | 1.5 | Measure + ship | localStorage persistence + outcome log + one honest stat (complete vs incomplete specs) — verified with a browser e2e smoke · **deploy publicly (Vercel)** · share to communities | ✅ build 2026-07-23 — deploy + announce are the owner's move |
 | 2a | LLM intake | BYOK: user's key in localStorage, browser → Anthropic directly (no backend), Claude pre-fills fields + next-best question, fills empty fields only, graceful fallback (DESIGN.md §4) | ✅ 2026-07-23 |
 | 2b | MCP server | `elicit_spec` / `compile_spec` over stdio; agents run the flow in-chat (DESIGN.md §5, `spec-compiler-mvp/mcp/`) | ✅ 2026-07-23 |
+| 2b+ | MCP distribution | Publishable npm package `spec-compiler-mcp` (`npx -y ...`, self-contained bundle) + registry manifests (MCP Registry `server.json`, Smithery `smithery.yaml`) + `mcp-server/PUBLISHING.md` | ✅ prepped 2026-07-23 — owner runs `npm publish` + registry submit |
 | 3 | Close the retry loop | "What went wrong?" → compiled refinement per platform | after 1.5 instruments outcomes |
 | 4 | New domain | Intent classifier + the **coding** wedge | after image+video validates |
 | 5 | Product | Accounts, saved specs, sharing | when someone asks to log in |

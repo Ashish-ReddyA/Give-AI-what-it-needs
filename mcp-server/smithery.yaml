@@ -1,0 +1,12 @@
+# Smithery listing for spec-compiler-mcp.
+# Local stdio server distributed via npm — Smithery runs it with npx.
+# Verify against current Smithery docs before submitting: https://smithery.ai/docs
+startCommand:
+  type: stdio
+  # No user configuration required — the tools need no API keys or secrets.
+  configSchema: {}
+  commandFunction: |
+    () => ({
+      command: "npx",
+      args: ["-y", "spec-compiler-mcp"]
+    })

@@ -1,9 +1,12 @@
-#!/usr/bin/env node
 // Spec Compiler MCP server — stdio transport.
 //
 // Exposes the elicit → compile loop to any MCP client (Claude Code,
 // Claude Desktop, other agents). All logic lives in mcp/tools.ts and the
 // shared lib/; this file is only registration + transport.
+//
+// The executable shebang is injected by the esbuild banner at bundle time
+// (see mcp:build / the published spec-compiler-mcp package), so the source
+// stays a plain module that tsx and node can both run.
 //
 // Run (dev):    npm run mcp
 // Run (built):  npm run mcp:build && node mcp/dist/server.mjs

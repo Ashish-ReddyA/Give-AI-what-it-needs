@@ -1,0 +1,43 @@
+{
+  "name": "spec-compiler-mcp",
+  "version": "0.2.0",
+  "description": "Ask the few questions AI generation actually needs, then compile one prompt per platform (Midjourney / DALL·E / Higgsfield / Veo 3 / Runway). An MCP server so agents run 'ask first, spend once' in-chat.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "image-generation",
+    "video-generation",
+    "prompt-engineering",
+    "midjourney",
+    "veo",
+    "runway",
+    "higgsfield"
+  ],
+  "license": "MIT",
+  "author": "Ashish-ReddyA",
+  "homepage": "https://github.com/Ashish-ReddyA/Give-AI-what-it-needs/tree/main/mcp-server",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ashish-ReddyA/Give-AI-what-it-needs.git",
+    "directory": "mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/Ashish-ReddyA/Give-AI-what-it-needs/issues"
+  },
+  "type": "module",
+  "bin": {
+    "spec-compiler-mcp": "dist/server.mjs"
+  },
+  "files": [
+    "dist",
+    "server.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm --prefix ../spec-compiler-mvp run -s mcp:pack",
+    "prepublishOnly": "npm run build"
+  }
+}

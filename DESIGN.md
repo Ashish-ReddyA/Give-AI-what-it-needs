@@ -89,28 +89,44 @@ the phasing; this carries the "why."_
   This is both the killer feature and the instrumentation that finally
   measures "regenerations avoided."
 
-## 4. The LLM layer (✅ shipped 2026-07-23)
+## 4. The LLM layer (✅ shipped 2026-07-23; multi-provider 2026-07-23)
 
-- **Surface:** no server route at all — BYOK made it client-only. The
-  AssistPanel dynamically imports `lib/analyze.ts`, which calls Anthropic
-  **directly from the browser** with the user's key
-  (`dangerouslyAllowBrowser` sets the CORS opt-in header). The app stays
-  fully static; the SDK lives in a lazy chunk (~200 kB, loaded on first
-  use only).
-- **SDK:** `@anthropic-ai/sdk`, model `claude-opus-4-8`, **structured
-  outputs** via `messages.parse()` + `zodOutputFormat` (zod v4 schemas —
-  the SDK helper requires them) so the response is schema-validated,
-  never regex-parsed. `stop_reason: "refusal"` handled explicitly.
-- **Behavior:** extraction is deliberately conservative — the system
-  prompt forbids inventing fields ("a bare platform name is NOT enough"),
-  already-answered fields travel with the request so they're never
-  re-extracted or re-asked, and `mergeAnalysis` fills **empty fields
-  only** — the user's explicit picks always win. `nextQuestion` returns
-  the single highest-leverage question tailored to the idea.
-- **Tests:** merge invariants + wire-level tests with a mocked fetch
-  asserting the exact request (key header, browser-access header, model,
-  JSON-schema output config, alreadyAnswered context) and the parse/
-  refusal paths.
+BYOK, and **any provider** — the user picks one (Anthropic, OpenAI, NVIDIA,
+Google, Groq, Mistral, OpenRouter, or a custom OpenAI-compatible endpoint)
+and brings that provider's key, one at a time. `lib/providers.ts` is the
+single registry both the UI and the server route read.
+
+- **Two routes, by provider kind (`lib/analyze.ts` dispatches):**
+  - **Anthropic** → called **directly from the browser** with the user's
+    key (`dangerouslyAllowBrowser` sets the CORS opt-in header). Key never
+    leaves the browser. Structured outputs via `messages.parse()` +
+    `zodOutputFormat` (zod v4). `claude-opus-4-8`.
+  - **Everything else** → the browser posts to the app's own same-origin
+    **`/api/analyze`** proxy (`app/api/analyze/route.ts`), which forwards
+    to the provider's OpenAI-compatible `/chat/completions` with the user's
+    key and returns the text. Needed because those providers block direct
+    browser calls (CORS). JSON mode + a spelled-out key contract, then the
+    result is validated **client-side** (invalid enums → null). The proxy
+    never logs or stores the key; there is no app-side API key.
+- **Why the proxy:** confirmed empirically — only Anthropic (and a couple
+  of others) permit browser-direct calls; NVIDIA/OpenAI/Groq/Mistral do
+  not. The proxy is a pure pass-through so *any* provider works while the
+  Anthropic path keeps its key-stays-local property.
+- **Architecture cost:** the app is no longer 100% static — it now has one
+  serverless function (`ƒ /api/analyze`). Still **zero env vars** (every
+  request carries the user's own key). Vercel deploys it automatically.
+- **SSRF guard:** the custom provider's user-supplied base URL is
+  restricted to `https://` and rejected for loopback/private/link-local
+  hosts (`isSafeBaseUrl`).
+- **Behavior (unchanged):** conservative extraction (the prompt forbids
+  inventing fields), already-answered fields ride along so they're never
+  re-asked, `mergeAnalysis` fills **empty fields only** — user picks always
+  win, and `nextQuestion` is the single highest-leverage question.
+- **Tests:** merge invariants; both analyze paths with mocked fetch
+  (Anthropic headers/model/schema, proxy provider/model/key + enum
+  coercion + JSON salvage + error passthrough); the route handler
+  (forwarding, SSRF, error passthrough, Anthropic-refusal); provider
+  registry + `isSafeBaseUrl`.
 - **Key strategy — DECIDED 2026-07-23: BYOK.** The user pastes their own
   Anthropic API key into the UI; it lives in browser `localStorage` only
   and is never persisted server-side. Two implementation options when

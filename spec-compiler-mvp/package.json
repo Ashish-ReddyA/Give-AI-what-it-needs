@@ -2,6 +2,9 @@
   "name": "spec-compiler-mvp",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "mcp": "tsx mcp/server.ts",
-    "mcp:build": "esbuild mcp/server.ts --bundle --platform=node --target=node18 --format=esm --outfile=mcp/dist/server.mjs --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\""
+    "mcp:build": "esbuild mcp/server.ts --bundle --platform=node --target=node18 --format=esm --outfile=mcp/dist/server.mjs --banner:js=\"#!/usr/bin/env node\nimport{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "mcp:pack": "esbuild mcp/server.ts --bundle --platform=node --target=node18 --format=esm --outfile=../mcp-server/dist/server.mjs --banner:js=\"#!/usr/bin/env node\nimport{createRequire}from'module';const require=createRequire(import.meta.url);\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.113.0",

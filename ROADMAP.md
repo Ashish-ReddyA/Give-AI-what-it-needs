@@ -134,8 +134,9 @@ intake helps and want an end-to-end demo.
 | 0 | Housekeeping | Code in git, README, roadmap | ✅ 2026-07-23 |
 | **1.25** | **Design-review hardening** | **Video domain (Higgsfield/Veo/Runway) · compiler correctness fixes (MJ v7, conditional `--style raw`, negation-aware routing) · dated platform knowledge (`lib/platforms.ts`) · honest meter + coherent compile gate · 32 unit tests · ESLint** | ✅ 2026-07-23 |
 | 1.5 | Measure + ship | localStorage persistence + outcome log + one honest stat (complete vs incomplete specs) — verified with a browser e2e smoke · **deploy publicly (Vercel)** · share to communities | ✅ build 2026-07-23 — deploy + announce are the owner's move |
-| 2a | LLM intake | BYOK: user's key in localStorage, browser → Anthropic directly (no backend), Claude pre-fills fields + next-best question, fills empty fields only, graceful fallback (DESIGN.md §4) | ✅ 2026-07-23 |
+| 2a | LLM intake | BYOK, **any provider** (Anthropic/OpenAI/NVIDIA/Google/Groq/Mistral/OpenRouter/custom), one at a time: pre-fills fields + next-best question, fills empty fields only. Anthropic browser-direct (key stays local); others via a same-origin `/api/analyze` proxy (DESIGN.md §4) | ✅ 2026-07-23 |
 | 2b | MCP server | `elicit_spec` / `compile_spec` over stdio; agents run the flow in-chat (DESIGN.md §5, `spec-compiler-mvp/mcp/`) | ✅ 2026-07-23 |
+| 2b+ | MCP distribution | Publishable npm package `spec-compiler-mcp` (`npx -y ...`, self-contained bundle) + registry manifests (MCP Registry `server.json`, Smithery `smithery.yaml`) + `mcp-server/PUBLISHING.md` | ✅ prepped 2026-07-23 — owner runs `npm publish` + registry submit |
 | 3 | Close the retry loop | "What went wrong?" → compiled refinement per platform | after 1.5 instruments outcomes |
 | 4 | New domain | Intent classifier + the **coding** wedge | after image+video validates |
 | 5 | Product | Accounts, saved specs, sharing | when someone asks to log in |
@@ -148,9 +149,13 @@ next-question approximation (2a) proves the concept.
 
 ## 4. Owner decisions (recorded 2026-07-23)
 - **Deploy target + account** (Phase 1.5): owner will set up the deploy
-  (Vercel) after the current build phases. Note: with BYOK there is no
-  server-side secret, so a fully static deploy is possible.
-- **API key strategy** (Phase 2a): **BYOK** — the user pastes their own
-  Anthropic key, stored in browser localStorage only. See DESIGN.md §4.
+  (Vercel). Set **Root Directory = `spec-compiler-mvp`** and **no env
+  vars** (every request carries the user's own key). The app is one static
+  page plus one serverless function (`ƒ /api/analyze`, the provider proxy)
+  — Vercel deploys both automatically.
+- **API key strategy** (Phase 2a): **BYOK, any provider** — the user picks
+  a provider and pastes their own key (localStorage only). Anthropic stays
+  browser-direct; the rest go through the `/api/analyze` proxy. See
+  DESIGN.md §4.
 - **Where to announce** (Phase 1.5): **all channels** — r/midjourney,
   AI-video Discords, and X.

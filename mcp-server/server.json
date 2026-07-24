@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.ashish-reddya/spec-compiler",
+  "description": "Ask the few questions AI generation actually needs, then compile one prompt per platform (Midjourney / DALL-E / Higgsfield / Veo 3 / Runway). Ask first, spend once.",
+  "status": "active",
+  "version": "0.2.0",
+  "repository": {
+    "url": "https://github.com/Ashish-ReddyA/Give-AI-what-it-needs",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "spec-compiler-mcp",
+      "version": "0.2.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

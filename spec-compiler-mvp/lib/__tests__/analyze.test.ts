@@ -144,6 +144,90 @@ describe("generateEntityQuestions", () => {
     expect(sent.alreadyAsked).toEqual(["What is in the cafe?"]);
   });
 
+  it("strips schema-keyword noise the model leaks into options", async () => {
+    // A weaker model echoed the literal "multi" token before each real option
+    // (the exact bug a user hit). Those junk tokens must never become chips.
+    const questions = await generateEntityQuestions(
+      "image",
+      "a barista in a cafe",
+      { id: "cafe", label: "Cafe" },
+      {},
+      [],
+      {
+        providerId: "nvidia",
+        apiKey: "nv",
+        model: "meta/llama-3.1-8b-instruct",
+        fetch: capture(
+          {
+            text: JSON.stringify({
+              questions: [
+                {
+                  id: "contents",
+                  question: "What else is in the cafe?",
+                  options: [
+                    "multi",
+                    "plants",
+                    "multi",
+                    "flowers",
+                    "multi",
+                    "other customers",
+                    "multi",
+                    "music playing",
+                  ],
+                  multi: true,
+                },
+              ],
+            }),
+          },
+          []
+        ),
+      }
+    );
+    expect(questions[0].options).toEqual([
+      "plants",
+      "flowers",
+      "other customers",
+      "music playing",
+    ]);
+    expect(questions[0].multi).toBe(true);
+  });
+
+  it("pulls a string out of object-shaped options and dedupes", async () => {
+    const questions = await generateEntityQuestions(
+      "image",
+      "a cat",
+      { id: "cat", label: "Cat" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: capture(
+          {
+            text: JSON.stringify({
+              questions: [
+                {
+                  id: "fur",
+                  question: "Fur?",
+                  options: [
+                    { value: "orange tabby" },
+                    { label: "black" },
+                    "black",
+                    "white",
+                  ],
+                  multi: true,
+                },
+              ],
+            }),
+          },
+          []
+        ),
+      }
+    );
+    expect(questions[0].options).toEqual(["orange tabby", "black", "white"]);
+  });
+
   it("defaults multi to false when the model omits it", async () => {
     const questions = await generateEntityQuestions(
       "image",

@@ -13,7 +13,7 @@ import {
   EMPTY_VIDEO_SPEC,
 } from "./types";
 import { OutcomeRecord, PendingCopy, OutcomeResult } from "./outcomes";
-import { QAState, EMPTY_QA, Question, Section } from "./questions";
+import { QAState, EMPTY_QA, Question, Entity } from "./questions";
 
 export interface KV {
   getItem(key: string): string | null;
@@ -83,10 +83,10 @@ function sanitizeQuestion(raw: unknown): Question | null {
   const options = Array.isArray(r.options)
     ? r.options.filter((o): o is string => typeof o === "string")
     : [];
-  return { id: r.id, question: r.question, options };
+  return { id: r.id, question: r.question, options, multi: r.multi === true };
 }
 
-function sanitizeSection(raw: unknown): Section | null {
+function sanitizeEntity(raw: unknown): Entity | null {
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== "string" || typeof r.label !== "string") return null;
@@ -103,10 +103,10 @@ function sanitizeQuestions(raw: unknown): Question[] {
 function sanitizeQA(raw: unknown): QAState {
   if (typeof raw !== "object" || raw === null) return { ...EMPTY_QA };
   const r = raw as Record<string, unknown>;
-  const sectionQuestions: Record<string, Question[]> = {};
-  if (typeof r.sectionQuestions === "object" && r.sectionQuestions !== null) {
-    for (const [k, v] of Object.entries(r.sectionQuestions)) {
-      sectionQuestions[k] = sanitizeQuestions(v);
+  const entityQuestions: Record<string, Question[]> = {};
+  if (typeof r.entityQuestions === "object" && r.entityQuestions !== null) {
+    for (const [k, v] of Object.entries(r.entityQuestions)) {
+      entityQuestions[k] = sanitizeQuestions(v);
     }
   }
   const answers: Record<string, string> = {};
@@ -116,11 +116,10 @@ function sanitizeQA(raw: unknown): QAState {
     }
   }
   return {
-    overall: sanitizeQuestions(r.overall),
-    sections: Array.isArray(r.sections)
-      ? r.sections.map(sanitizeSection).filter((s): s is Section => s !== null)
+    entities: Array.isArray(r.entities)
+      ? r.entities.map(sanitizeEntity).filter((e): e is Entity => e !== null)
       : [],
-    sectionQuestions,
+    entityQuestions,
     answers,
   };
 }

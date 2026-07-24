@@ -10,55 +10,60 @@ import {
 import { EMPTY_SPEC, EMPTY_VIDEO_SPEC } from "../types";
 
 const qa: QAState = {
-  overall: [
-    { id: "o_cat_pose", question: "How is the cat posed?", options: ["sitting"] },
-    { id: "o_cat_color", question: "Cat colour?", options: [] },
+  entities: [
+    { id: "barista", label: "Barista" },
+    { id: "latte", label: "Latte" },
   ],
-  sections: [{ id: "ball", label: "Ball" }],
-  sectionQuestions: {
-    ball: [{ id: "s_ball_size", question: "Ball size?", options: ["small"] }],
+  entityQuestions: {
+    barista: [
+      { id: "barista_traits", question: "Barista traits?", options: ["young adult", "female"], multi: true },
+      { id: "barista_hair", question: "Hair colour?", options: [], multi: false },
+    ],
+    latte: [
+      { id: "latte_state", question: "Latte state?", options: ["being poured"], multi: false },
+    ],
   },
   answers: {
-    o_cat_pose: "mid-pounce",
-    o_cat_color: "  ", // blank → ignored
-    s_ball_size: "small red rubber ball",
+    barista_traits: "young adult, female", // multi answer
+    barista_hair: "  ", // blank → ignored
+    latte_state: "being poured from a steel jug",
   },
 };
 
-describe("composeSubject", () => {
-  it("weaves answered details into the idea, skipping blanks", () => {
-    expect(composeSubject("a cat playing with a ball", qa)).toBe(
-      "a cat playing with a ball, mid-pounce, small red rubber ball"
+describe("composeSubject (deterministic fallback)", () => {
+  it("joins the idea with answered details, skipping blanks", () => {
+    expect(composeSubject("a barista pouring latte", qa)).toBe(
+      "a barista pouring latte, young adult, female, being poured from a steel jug"
     );
   });
-  it("returns just the idea when nothing is answered", () => {
+  it("is just the idea when nothing is answered", () => {
     expect(composeSubject("a cat", EMPTY_QA)).toBe("a cat");
   });
 });
 
 describe("answeredCount", () => {
-  it("counts only non-blank answers", () => {
+  it("counts non-blank answers (multi counts once)", () => {
     expect(answeredCount(qa)).toBe(2);
     expect(answeredCount(EMPTY_QA)).toBe(0);
   });
 });
 
 describe("qaAnsweredByText", () => {
-  it("maps answered ids back to their question text", () => {
+  it("maps answered ids back to question text", () => {
     expect(qaAnsweredByText(qa)).toEqual({
-      "How is the cat posed?": "mid-pounce",
-      "Ball size?": "small red rubber ball",
+      "Barista traits?": "young adult, female",
+      "Latte state?": "being poured from a steel jug",
     });
   });
 });
 
 describe("buildAnswered", () => {
-  it("merges fixed-field answers with the answered questions", () => {
-    const spec = { ...EMPTY_SPEC, idea: "a cat", style: "anime" as const };
+  it("merges fixed-field answers with answered questions", () => {
+    const spec = { ...EMPTY_SPEC, idea: "x", style: "anime" as const };
     expect(buildAnswered("image", spec, qa)).toEqual({
       style: "anime",
-      "How is the cat posed?": "mid-pounce",
-      "Ball size?": "small red rubber ball",
+      "Barista traits?": "young adult, female",
+      "Latte state?": "being poured from a steel jug",
     });
   });
   it("works for video specs too", () => {

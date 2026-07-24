@@ -1,20 +1,22 @@
 "use client";
 
-// The dynamic question engine. The AI reads the idea and ASKS — it doesn't
-// pre-fill a form. Level 1: overall subject questions. Deep Analysis: the
-// idea broken into sections; open one and the AI asks about just that part.
-// Answers accumulate into qa.answers and feed the compiled prompt.
+// Entity-first question engine. The AI extracts the things in the idea
+// (Barista · Latte · Cafe · Scene); open each and it asks deep questions
+// about just that thing — multi-select where values co-exist, relational
+// where they apply. Answers accumulate in qa.answers and feed the AI
+// compose step at generate time.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Loader2, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { Domain, ImageSpec, VideoSpec } from "@/lib/types";
 import { ProviderConfig } from "@/lib/providers";
 import {
   QAState,
   Question,
-  Section,
+  Entity,
   buildAnswered,
   answeredCount,
+  askedQuestions,
 } from "@/lib/questions";
 
 interface Props {
@@ -22,7 +24,9 @@ interface Props {
   idea: string;
   spec: ImageSpec | VideoSpec;
   qa: QAState;
-  onQaChange: (qa: QAState) => void;
+  // Functional updater — async loads merge into the LATEST state so a
+  // slow question-fetch can never clobber an answer the user just picked.
+  onQaChange: (update: (prev: QAState) => QAState) => void;
   config: ProviderConfig | null;
 }
 
@@ -35,6 +39,8 @@ function optsOf(config: ProviderConfig) {
   };
 }
 
+// Answers are stored as a comma-joined string; multi-select just keeps more
+// than one token in it.
 function QuestionItem({
   q,
   answer,
@@ -44,19 +50,50 @@ function QuestionItem({
   answer: string;
   onAnswer: (value: string) => void;
 }) {
-  const chipSelected = q.options.includes(answer);
+  const tokens = answer
+    ? answer.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const has = (opt: string) => tokens.includes(opt);
+  const customValue = q.options.length
+    ? tokens.filter((t) => !q.options.includes(t)).join(", ")
+    : answer;
+
+  const toggleChip = (opt: string) => {
+    if (q.multi) {
+      const next = has(opt) ? tokens.filter((t) => t !== opt) : [...tokens, opt];
+      onAnswer(next.join(", "));
+    } else {
+      onAnswer(has(opt) ? "" : opt);
+    }
+  };
+
+  const onCustom = (text: string) => {
+    if (q.multi) {
+      const chips = tokens.filter((t) => q.options.includes(t));
+      const customs = text.split(",").map((s) => s.trim()).filter(Boolean);
+      onAnswer([...chips, ...customs].join(", "));
+    } else {
+      onAnswer(text.trim());
+    }
+  };
+
   return (
     <div className="border-t border-dashed border-line pt-3">
-      <p className="font-body text-sm text-ink mb-2">{q.question}</p>
+      <p className="font-body text-sm text-ink mb-2">
+        {q.question}
+        {q.multi && (
+          <span className="font-mono text-[10px] text-inkMuted"> · pick any</span>
+        )}
+      </p>
       {q.options.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {q.options.map((opt) => (
             <button
               key={opt}
               type="button"
-              onClick={() => onAnswer(answer === opt ? "" : opt)}
+              onClick={() => toggleChip(opt)}
               className={`px-2.5 py-1 font-mono text-[11px] border rounded-sm transition-colors ${
-                answer === opt
+                has(opt)
                   ? "bg-ink text-paperRaised border-ink"
                   : "bg-paperRaised text-ink border-line hover:border-ink"
               }`}
@@ -67,9 +104,15 @@ function QuestionItem({
         </div>
       )}
       <input
-        value={chipSelected ? "" : answer}
-        onChange={(e) => onAnswer(e.target.value)}
-        placeholder={q.options.length ? "or type your own…" : "type your answer…"}
+        value={customValue}
+        onChange={(e) => onCustom(e.target.value)}
+        placeholder={
+          q.multi
+            ? "add your own (comma-separated)…"
+            : q.options.length
+              ? "or type your own…"
+              : "type your answer…"
+        }
         className="w-full bg-paper border-b border-line px-1 py-1 text-xs font-body text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
       />
     </div>
@@ -84,20 +127,24 @@ export default function QuestionEngine({
   onQaChange,
   config,
 }: Props) {
-  const [busyOverall, setBusyOverall] = useState(false);
-  const [busySections, setBusySections] = useState(false);
-  const [loadingSections, setLoadingSections] = useState<Set<string>>(new Set());
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [busyEntities, setBusyEntities] = useState(false);
+  const [loading, setLoading] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  // Entities whose questions are loaded or in flight — prevents a second
+  // open (or a rapid double-click) from re-asking the same questions.
+  const generated = useRef<Set<string>>(new Set());
 
   const hasIdea = idea.trim().length > 0;
   const ready = config && hasIdea;
 
   const setAnswer = (id: string, value: string) => {
-    const answers = { ...qa.answers };
-    if (value.trim()) answers[id] = value;
-    else delete answers[id];
-    onQaChange({ ...qa, answers });
+    onQaChange((prev) => {
+      const answers = { ...prev.answers };
+      if (value.trim()) answers[id] = value;
+      else delete answers[id];
+      return { ...prev, answers };
+    });
   };
 
   const friendly = (e: unknown): string => {
@@ -109,85 +156,73 @@ export default function QuestionEngine({
     return msg.slice(0, 180);
   };
 
-  const askOverall = async () => {
-    if (!ready || busyOverall) return;
-    setBusyOverall(true);
-    setError(null);
-    try {
-      const { generateOverallQuestions } = await import("@/lib/analyze");
-      const questions = await generateOverallQuestions(
-        domain,
-        idea,
-        buildAnswered(domain, spec, qa),
-        optsOf(config)
-      );
-      onQaChange({ ...qa, overall: questions });
-    } catch (e) {
-      setError(friendly(e));
-    } finally {
-      setBusyOverall(false);
-    }
-  };
-
-  const deepAnalysis = async () => {
-    if (!config || busySections) return;
-    setBusySections(true);
-    setError(null);
-    try {
-      const { generateSections } = await import("@/lib/analyze");
-      const sections = await generateSections(
-        domain,
-        idea,
-        buildAnswered(domain, spec, qa),
-        optsOf(config)
-      );
-      onQaChange({ ...qa, sections });
-      // auto-open the first section for immediate feedback
-      if (sections[0]) void toggleSection(sections[0], sections);
-    } catch (e) {
-      setError(friendly(e));
-    } finally {
-      setBusySections(false);
-    }
-  };
-
-  const toggleSection = async (section: Section, sectionsOverride?: Section[]) => {
-    const open = new Set(openSections);
-    if (open.has(section.id)) {
-      open.delete(section.id);
-      setOpenSections(open);
+  const openEntity = async (entity: Entity) => {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(entity.id)) next.delete(entity.id);
+      else next.add(entity.id);
+      return next;
+    });
+    // Already have (or are fetching) this entity's questions → never re-ask.
+    if (!config || qa.entityQuestions[entity.id] || generated.current.has(entity.id)) {
       return;
     }
-    open.add(section.id);
-    setOpenSections(open);
-
-    if (qa.sectionQuestions[section.id] || !config) return;
-    const loading = new Set(loadingSections);
-    loading.add(section.id);
-    setLoadingSections(loading);
+    generated.current.add(entity.id);
+    setLoading((prev) => new Set(prev).add(entity.id));
     try {
-      const { generateSectionQuestions } = await import("@/lib/analyze");
-      const questions = await generateSectionQuestions(
+      const { generateEntityQuestions } = await import("@/lib/analyze");
+      const questions = await generateEntityQuestions(
         domain,
         idea,
-        section,
+        entity,
+        buildAnswered(domain, spec, qa),
+        askedQuestions(qa),
+        optsOf(config)
+      );
+      onQaChange((prev) =>
+        prev.entityQuestions[entity.id]
+          ? prev // a concurrent op already set them — keep, don't overwrite
+          : {
+              ...prev,
+              entityQuestions: { ...prev.entityQuestions, [entity.id]: questions },
+            }
+      );
+    } catch (e) {
+      setError(friendly(e));
+      generated.current.delete(entity.id); // allow a retry
+      setOpen((prev) => {
+        const next = new Set(prev);
+        next.delete(entity.id);
+        return next;
+      });
+    } finally {
+      setLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(entity.id);
+        return next;
+      });
+    }
+  };
+
+  const extract = async () => {
+    if (!ready || busyEntities) return;
+    setBusyEntities(true);
+    setError(null);
+    try {
+      const { generateEntities } = await import("@/lib/analyze");
+      const entities = await generateEntities(
+        domain,
+        idea,
         buildAnswered(domain, spec, qa),
         optsOf(config)
       );
-      onQaChange({
-        ...qa,
-        sections: sectionsOverride ?? qa.sections,
-        sectionQuestions: { ...qa.sectionQuestions, [section.id]: questions },
-      });
+      // Merge functionally — keep any answers and already-loaded questions.
+      onQaChange((prev) => ({ ...prev, entities }));
+      if (entities[0]) void openEntity(entities[0]);
     } catch (e) {
       setError(friendly(e));
-      const reopen = new Set(openSections);
-      reopen.delete(section.id);
-      setOpenSections(reopen);
     } finally {
-      const done = new Set(loadingSections);
-      done.delete(section.id);
-      setLoadingSections(done);
+      setBusyEntities(false);
     }
   };
 
@@ -208,127 +243,94 @@ export default function QuestionEngine({
 
       {!config ? (
         <p className="font-body text-xs text-inkMuted">
-          Add a provider key above and the AI will ask what it needs to get
-          your {domain} right — tailored to your idea, not a fixed form.
+          Add a provider key above and the AI will pull the things out of your
+          idea — each subject, object, and the setting — and ask what it needs
+          about each.
         </p>
-      ) : qa.overall.length === 0 ? (
+      ) : qa.entities.length === 0 ? (
         <>
           <button
             type="button"
-            onClick={askOverall}
-            disabled={!ready || busyOverall}
+            onClick={extract}
+            disabled={!ready || busyEntities}
             className="w-full py-2 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
           >
-            {busyOverall ? (
+            {busyEntities ? (
               <>
-                <Loader2 size={12} className="animate-spin" /> thinking…
+                <Loader2 size={12} className="animate-spin" /> reading your idea…
               </>
             ) : (
-              <>Ask what the AI needs</>
+              <>Break down my idea</>
             )}
           </button>
           {!hasIdea && (
             <p className="font-mono text-[10px] text-inkMuted mt-1.5">
-              type an idea first — the questions are built from it
+              type an idea first — the AI pulls the things out of it
             </p>
           )}
         </>
       ) : (
         <>
-          <div className="space-y-3">
-            {qa.overall.map((q) => (
-              <QuestionItem
-                key={q.id}
-                q={q}
-                answer={qa.answers[q.id] ?? ""}
-                onAnswer={(v) => setAnswer(q.id, v)}
-              />
-            ))}
+          <p className="font-mono text-[10px] uppercase text-inkMuted mb-2">
+            The things in your idea — open each to refine it
+          </p>
+          <div className="space-y-2">
+            {qa.entities.map((entity) => {
+              const isOpen = open.has(entity.id);
+              const isLoading = loading.has(entity.id);
+              const qs = qa.entityQuestions[entity.id] ?? [];
+              const answeredHere = qs.filter((q) =>
+                (qa.answers[q.id] ?? "").trim()
+              ).length;
+              return (
+                <div key={entity.id} className="border border-line rounded-sm bg-paper">
+                  <button
+                    type="button"
+                    onClick={() => openEntity(entity)}
+                    className="w-full flex items-center justify-between px-3 py-2 font-mono text-xs text-ink hover:bg-paperRaised transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {isOpen ? (
+                        <ChevronDown size={12} />
+                      ) : (
+                        <ChevronRight size={12} />
+                      )}
+                      {entity.label}
+                      {answeredHere > 0 && (
+                        <span className="text-safe">· {answeredHere}</span>
+                      )}
+                    </span>
+                    {isLoading && <Loader2 size={12} className="animate-spin" />}
+                  </button>
+                  {isOpen && !isLoading && qs.length > 0 && (
+                    <div className="px-3 pb-3 space-y-3">
+                      {qs.map((q) => (
+                        <QuestionItem
+                          key={q.id}
+                          q={q}
+                          answer={qa.answers[q.id] ?? ""}
+                          onAnswer={(v) => setAnswer(q.id, v)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {isOpen && !isLoading && qs.length === 0 && (
+                    <p className="px-3 pb-3 font-mono text-[10px] text-inkMuted">
+                      no questions came back — try another part
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
           <button
             type="button"
-            onClick={askOverall}
-            disabled={busyOverall}
+            onClick={extract}
+            disabled={busyEntities}
             className="mt-2 font-mono text-[10px] text-inkMuted hover:text-ink transition-colors disabled:opacity-40"
           >
-            {busyOverall ? "re-asking…" : "↻ re-ask (after editing the idea)"}
+            {busyEntities ? "re-reading…" : "↻ re-extract (after editing the idea)"}
           </button>
-
-          {/* Deep Analysis */}
-          <div className="mt-4 pt-3 border-t border-line">
-            {qa.sections.length === 0 ? (
-              <button
-                type="button"
-                onClick={deepAnalysis}
-                disabled={busySections}
-                className="w-full py-2 font-mono text-xs uppercase tracking-wide border border-line rounded-sm text-ink hover:border-ink disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
-              >
-                {busySections ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin" /> breaking it
-                    down…
-                  </>
-                ) : (
-                  <>Deep analysis — refine a specific part</>
-                )}
-              </button>
-            ) : (
-              <>
-                <p className="font-mono text-[10px] uppercase text-inkMuted mb-2">
-                  Refine a part
-                </p>
-                <div className="space-y-2">
-                  {qa.sections.map((s) => {
-                    const isOpen = openSections.has(s.id);
-                    const isLoading = loadingSections.has(s.id);
-                    const qs = qa.sectionQuestions[s.id] ?? [];
-                    return (
-                      <div
-                        key={s.id}
-                        className="border border-line rounded-sm bg-paper"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleSection(s)}
-                          className="w-full flex items-center justify-between px-3 py-2 font-mono text-xs text-ink hover:bg-paperRaised transition-colors"
-                        >
-                          <span className="flex items-center gap-1.5">
-                            {isOpen ? (
-                              <ChevronDown size={12} />
-                            ) : (
-                              <ChevronRight size={12} />
-                            )}
-                            {s.label}
-                          </span>
-                          {isLoading && (
-                            <Loader2 size={12} className="animate-spin" />
-                          )}
-                        </button>
-                        {isOpen && !isLoading && qs.length > 0 && (
-                          <div className="px-3 pb-3 space-y-3">
-                            {qs.map((q) => (
-                              <QuestionItem
-                                key={q.id}
-                                q={q}
-                                answer={qa.answers[q.id] ?? ""}
-                                onAnswer={(v) => setAnswer(q.id, v)}
-                              />
-                            ))}
-                          </div>
-                        )}
-                        {isOpen && !isLoading && qs.length === 0 && (
-                          <p className="px-3 pb-3 font-mono text-[10px] text-inkMuted">
-                            no questions came back — try another part
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
         </>
       )}
 

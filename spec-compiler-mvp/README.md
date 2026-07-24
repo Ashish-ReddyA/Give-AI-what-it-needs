@@ -60,13 +60,15 @@ AI's job is the **question engine** below.
 
 ## The question engine (BYOK — any provider)
 
-**The AI asks; it doesn't fill a form.** Type an idea, and the AI generates
-the questions *that idea* needs — "a cat playing with a ball" → cat pose?
-cat color? the ball? — each with tap-or-type options. Hit **Deep Analysis**
-and it breaks the idea into parts (Cat · Ball · Background); click one and
-it asks detailed questions about just that part. Every answer weaves into
-the compiled prompt. The fixed technical picks (aspect ratio, duration,
-style…) stay as instant taps — the AI only asks the subject questions.
+**Entity-first: the AI extracts the things in your idea and asks about
+each.** Type "a barista pouring latte in a sunset cafe" → hit **Break down
+my idea** → the AI pulls out **Barista · Latte · Cafe · Scene**. Open one
+and it asks deep questions about just that thing — **multi-select** where
+values co-exist (young adult *and* female), and relational where they apply
+(latte: in a cup / being poured, from what). Then **Generate** and the AI
+**writes one coherent prompt** from your answers — real prose, not a
+comma dump — which the deterministic layer wraps per platform. The fixed
+technical picks (aspect ratio, duration, style…) stay as instant taps.
 
 Pick a provider (Anthropic, OpenAI, NVIDIA, Google, Groq, Mistral,
 OpenRouter, or a custom OpenAI-compatible endpoint), paste **your own** key,
@@ -86,11 +88,11 @@ one at a time.
 ```
 lib/providers.ts        provider registry (UI + proxy read it) + SSRF guard
 lib/analyze-core.ts     "already answered" helpers — no SDK
-lib/analyze.ts          3 generators: overall / sections / section questions;
-                        Anthropic browser-direct, others via proxy
+lib/analyze.ts          generateEntities · generateEntityQuestions ·
+                        composeScene; Anthropic browser-direct, others proxy
 app/api/analyze/route   the same-origin proxy for OpenAI-compatible providers
 components/ProviderKeyBar   provider picker + key/model
-components/QuestionEngine    the dynamic Q&A + Deep Analysis drill-down
+components/QuestionEngine    entity extraction + deep multi-select questions
 ```
 
 ## Design decisions worth knowing

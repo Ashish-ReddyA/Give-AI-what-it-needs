@@ -1,17 +1,16 @@
-// The AI question engine. The model reads the user's idea and GENERATES
-// questions about the subject — it doesn't pre-fill a fixed form.
+// The AI question engine + prompt composer. Entity-first: the model reads
+// the idea, extracts the things in it, asks deep questions about each, then
+// composes a coherent prompt from the answers.
 //
-// Three generators, all provider-agnostic:
-//   generateOverallQuestions  → level-1 questions for the whole idea
-//   generateSections          → the idea broken into parts (Cat, Ball, …)
-//   generateSectionQuestions  → detailed questions about one part
+//   generateEntities         → the things in the idea (Barista, Latte, …)
+//   generateEntityQuestions  → deep, multi-select, relational questions
+//   composeScene             → weaves the answers into a real prompt (prose)
 //
-// Two transport routes, chosen by provider kind (same as before):
+// Two transport routes, chosen by provider kind:
 //   anthropic     → browser → api.anthropic.com directly (key stays local),
 //                   structured outputs via messages.parse + zodOutputFormat.
-//   openai-compat → browser → /api/analyze proxy → the provider (those
-//                   providers block direct browser calls), JSON mode +
-//                   client-side validation.
+//   openai-compat → browser → /api/analyze proxy → the provider, JSON mode +
+//                   client-side normalization.
 //
 // Dynamically imported, so the Anthropic SDK stays in a lazy chunk.
 
@@ -20,7 +19,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod/v4";
 import { Domain } from "./types";
 import { PROVIDERS } from "./providers";
-import { Question, Section } from "./questions";
+import { Question, Entity } from "./questions";
 
 // ---- schemas (Anthropic structured outputs) ----
 
@@ -30,56 +29,55 @@ const QuestionsSchema = z.object({
       id: z.string(),
       question: z.string(),
       options: z.array(z.string()),
+      multi: z.boolean(),
     })
   ),
 });
 
-const SectionsSchema = z.object({
-  sections: z.array(z.object({ id: z.string(), label: z.string() })),
+const EntitiesSchema = z.object({
+  entities: z.array(z.object({ id: z.string(), label: z.string() })),
 });
+
+const SceneSchema = z.object({ prompt: z.string() });
 
 // ---- prompts (provider-neutral) ----
 
-const CONTEXT_NOTE = `The user message is JSON: { idea, alreadyAnswered }. Never ask about anything already present in alreadyAnswered. Options must be short, self-contained descriptive phrases that read naturally when appended to the subject (e.g. "orange tabby fur", "mid-pounce", "small red rubber ball", "soft window light") — not one-word fragments that only make sense next to the question. Leave options as [] for genuinely open questions.`;
+const CONTEXT_NOTE = `The user message is JSON: { idea, alreadyAnswered, alreadyAsked }. Never ask about anything present in alreadyAnswered, and never repeat (or lightly reword) any question in alreadyAsked — ask only genuinely new aspects. Options must be short, self-contained descriptive phrases that read naturally in a scene description (e.g. "orange tabby fur", "a ceramic cup", "being poured from a steel jug", "warm sunset light") — not one-word fragments. Leave options as [] for genuinely open questions.`;
 
-function overallSystem(domain: Domain): string {
-  const medium = domain === "video" ? "video clip" : "image";
-  return `You help a user specify an AI-generated ${medium} BEFORE they spend credits generating it. Given their rough idea, produce the few highest-impact questions whose answers most change whether the result matches what they picture.
-
-Focus on the SUBJECT and scene: appearance, colors, materials, pose/action, key objects, setting, and mood.${
-    domain === "video" ? " You may ask about the action/motion of the subject, but NOT camera moves or clip length." : ""
-  } Do NOT ask about aspect ratio, resolution, ${
-    domain === "video" ? "duration, camera framing, " : ""
-  }file format, or render settings — those are handled elsewhere.
-
-Ask 3 to 6 questions, ordered by impact. ${CONTEXT_NOTE}`;
-}
-
-function sectionsSystem(domain: Domain): string {
+function entitiesSystem(domain: Domain): string {
   const medium = domain === "video" ? "video" : "image";
-  return `Break the user's ${medium} idea into the distinct elements they might want to refine separately — each main subject, important objects, and the background/setting (plus lighting or mood when they'd matter). Return 3 to 7 sections, ordered by how much each affects the result, each with a short snake_case id and a 1-2 word display label (e.g. "Cat", "Ball", "Background"). Do not include aspect ratio, duration, or technical settings as sections.`;
+  return `Extract the concrete things the user might want to control in this ${medium} idea: each distinct subject, each key object, and the setting/background. Then ALSO append one final element with id "scene" and label "Scene" for overall mood, lighting, and time of day.
+
+Return 3 to 7 elements, main subject first and "Scene" last, each with a short snake_case id and a 1-2 word display label (e.g. "Barista", "Latte", "Cafe", "Scene"). Do not include aspect ratio, duration, or technical settings.`;
 }
 
-function sectionQuestionsSystem(domain: Domain, sectionLabel: string): string {
+function entityQuestionsSystem(domain: Domain, label: string): string {
   const medium = domain === "video" ? "video clip" : "image";
-  return `The user wants to refine the "${sectionLabel}" part of their AI-generated ${medium}. Ask 3 to 6 detailed questions specifically about "${sectionLabel}" — its appearance, color, material, size, position, texture, and (if it's a subject) pose or behavior.
+  const scene = label.toLowerCase() === "scene";
+  const focus = scene
+    ? `Ask about overall mood, lighting, time of day, weather/atmosphere, and color palette.`
+    : `Cover its appearance (color, material, texture, size) and — when it applies — its STATE or RELATION to other things: for a drink, whether it's in a cup or being poured and from what; for a person, their pose, what they're doing, and what they're wearing; for a place, what's in it.`;
+  return `The user is specifying the "${label}" in their AI-generated ${medium}. Ask 3 to 6 detailed questions about ONLY "${label}". ${focus}
 
-Ask only about "${sectionLabel}", nothing else. Order by impact. ${CONTEXT_NOTE}`;
+For an attribute where several values can sensibly co-exist (traits, clothing, colors, objects present), set "multi": true so the user can pick more than one. For a mutually-exclusive choice (a single pose, one time of day), set "multi": false. Order by impact. ${CONTEXT_NOTE}`;
 }
 
-const QUESTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"questions":[{"id":"short_snake_id","question":"...","options":["...","..."]}]}. No prose, no markdown code fences.`;
-const SECTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"sections":[{"id":"short_snake_id","label":"Cat"}]}. No prose, no markdown code fences.`;
+function composeSystem(domain: Domain): string {
+  const medium = domain === "video" ? "video generation" : "image generation";
+  return `You write a single, vivid, coherent ${medium} prompt. Given the user's idea and their structured answers, weave EVERYTHING into natural, flowing description — do NOT output a comma-separated list of fragments, and do NOT invent details the user didn't give. Keep it to 1-3 sentences, concrete and visual. Do not mention aspect ratio, resolution, duration, or camera/render settings — those are added separately. Respond with ONLY a JSON object {"prompt": "..."}.`;
+}
+
+const QUESTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"questions":[{"id":"short_snake_id","question":"...","options":["...","..."],"multi":false}]}. No prose, no markdown code fences.`;
+const ENTITIES_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"entities":[{"id":"short_snake_id","label":"Barista"}]}. No prose, no markdown code fences.`;
+const SCENE_CONTRACT = `\n\n(Return ONLY {"prompt":"..."}.)`;
 
 // ---- options / transport ----
 
 export interface AnalyzeOptions {
   providerId: string;
   apiKey: string;
-  /** openai-compat: model id (editable in the UI). Ignored for Anthropic. */
   model?: string;
-  /** custom provider only. */
   baseUrl?: string;
-  /** Test hook. */
   fetch?: typeof globalThis.fetch;
 }
 
@@ -118,12 +116,12 @@ function extractJson(raw: string): Record<string, unknown> {
   );
 }
 
-// One structured call, routed by provider kind. Returns a plain object.
+// One structured call, routed by provider kind. `content` is the raw user
+// payload (JSON string for questions; free-form for compose).
 async function runStructured(
   system: string,
   jsonContract: string,
-  idea: string,
-  answered: Record<string, string>,
+  content: string,
   anthropicSchema: z.ZodType,
   opts: AnalyzeOptions
 ): Promise<Record<string, unknown>> {
@@ -135,7 +133,7 @@ async function runStructured(
       model: "claude-opus-4-8",
       max_tokens: 1500,
       system,
-      messages: [{ role: "user", content: userMessage(idea, answered) }],
+      messages: [{ role: "user", content }],
       output_config: { format: zodOutputFormat(anthropicSchema) },
     });
     if (message.stop_reason === "refusal") {
@@ -144,7 +142,6 @@ async function runStructured(
     return (message.parsed_output as Record<string, unknown>) ?? {};
   }
 
-  // openai-compat → proxy
   const model = (opts.model ?? "").trim() || provider?.defaultModel || "";
   if (!model) throw new Error("Pick a model for this provider first.");
   const doFetch = opts.fetch ?? fetch;
@@ -156,7 +153,7 @@ async function runStructured(
       model,
       baseUrl: opts.baseUrl,
       system: system + jsonContract,
-      user: userMessage(idea, answered),
+      user: content,
     }),
   });
   const data = (await resp.json()) as { text?: string; error?: string };
@@ -183,23 +180,23 @@ function normalizeQuestions(raw: unknown, idPrefix: string): Question[] {
     while (seen.has(id)) id = `${id}_`;
     seen.add(id);
     const options = Array.isArray(r.options)
-      ? r.options.map(str).filter(Boolean).slice(0, 6)
+      ? r.options.map(str).filter(Boolean).slice(0, 8)
       : [];
-    out.push({ id, question, options });
+    out.push({ id, question, options, multi: r.multi === true });
   });
   return out;
 }
 
-function normalizeSections(raw: unknown): Section[] {
+function normalizeEntities(raw: unknown): Entity[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
-  const out: Section[] = [];
+  const out: Entity[] = [];
   raw.forEach((item, i) => {
     if (!item || typeof item !== "object") return;
     const r = item as Record<string, unknown>;
     const label = str(r.label);
     if (!label) return;
-    let id = str(r.id) || `s${i}`;
+    let id = str(r.id) || `e${i}`;
     while (seen.has(id)) id = `${id}_`;
     seen.add(id);
     out.push({ id, label });
@@ -209,54 +206,61 @@ function normalizeSections(raw: unknown): Section[] {
 
 // ---- public generators ----
 
-export async function generateOverallQuestions(
+export async function generateEntities(
   domain: Domain,
   idea: string,
   answered: Record<string, string>,
   opts: AnalyzeOptions
-): Promise<Question[]> {
+): Promise<Entity[]> {
   const obj = await runStructured(
-    overallSystem(domain),
+    entitiesSystem(domain),
+    ENTITIES_CONTRACT,
+    userMessage(idea, answered),
+    EntitiesSchema,
+    opts
+  );
+  return normalizeEntities(obj.entities);
+}
+
+export async function generateEntityQuestions(
+  domain: Domain,
+  idea: string,
+  entity: Entity,
+  answered: Record<string, string>,
+  alreadyAsked: string[],
+  opts: AnalyzeOptions
+): Promise<Question[]> {
+  const content = JSON.stringify({
+    idea: idea.trim(),
+    alreadyAnswered: answered,
+    alreadyAsked,
+  });
+  const obj = await runStructured(
+    entityQuestionsSystem(domain, entity.label),
     QUESTIONS_CONTRACT,
-    idea,
-    answered,
+    content,
     QuestionsSchema,
     opts
   );
-  return normalizeQuestions(obj.questions, "o_");
+  return normalizeQuestions(obj.questions, `${entity.id}_`);
 }
 
-export async function generateSections(
+/** Weave the idea + answered details into one coherent prompt (prose). */
+export async function composeScene(
   domain: Domain,
   idea: string,
-  answered: Record<string, string>,
+  details: Record<string, string>,
   opts: AnalyzeOptions
-): Promise<Section[]> {
+): Promise<string> {
+  const content = JSON.stringify({ idea: idea.trim(), details });
   const obj = await runStructured(
-    sectionsSystem(domain),
-    SECTIONS_CONTRACT,
-    idea,
-    answered,
-    SectionsSchema,
+    composeSystem(domain),
+    SCENE_CONTRACT,
+    content,
+    SceneSchema,
     opts
   );
-  return normalizeSections(obj.sections);
-}
-
-export async function generateSectionQuestions(
-  domain: Domain,
-  idea: string,
-  section: Section,
-  answered: Record<string, string>,
-  opts: AnalyzeOptions
-): Promise<Question[]> {
-  const obj = await runStructured(
-    sectionQuestionsSystem(domain, section.label),
-    QUESTIONS_CONTRACT,
-    idea,
-    answered,
-    QuestionsSchema,
-    opts
-  );
-  return normalizeQuestions(obj.questions, `s_${section.id}_`);
+  const prompt = str(obj.prompt);
+  if (!prompt) throw new Error("The model returned an empty prompt — try again.");
+  return prompt;
 }

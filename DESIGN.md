@@ -89,32 +89,48 @@ the phasing; this carries the "why."_
   This is both the killer feature and the instrumentation that finally
   measures "regenerations avoided."
 
-## 4. The LLM layer — the question engine (✅ 2026-07-24)
+## 4. The LLM layer — the question engine (✅ 2026-07-24, entity-first)
 
-**This is the core.** The AI does not pre-fill a fixed form — it **reads the
-idea and generates the questions**, tailored to the subject, then lets the
-user drill into any part. "a cat playing with a ball" → *cat pose? cat
-color? the ball?* → **Deep Analysis** → sections (Cat · Ball · Background) →
-click one → detailed questions about just that part. (An earlier version
-merely pre-filled the fixed fields from the idea; that was the shallow
-version — this is the real elicitation the whole project is named for.)
+**This is the core.** The AI does not pre-fill a fixed form and does not ask
+a flat question list — it **extracts the things in the idea and asks about
+each**. "a barista pouring latte in a sunset cafe" → **Barista · Latte ·
+Cafe · Scene**; open one → deep questions about just that thing (multi-select
+where values co-exist, relational where they apply — *latte: in a cup /
+being poured, from what*). Then a compose step **writes a coherent prompt**
+from the answers. (This replaced two shallower versions in turn: pre-filling
+the fixed fields, then a two-level overall→sections list. Entity-first is
+what the user wanted and what the project is named for.)
 
+- **Entity-first flow** (`lib/questions.ts`, `lib/analyze.ts`,
+  `components/QuestionEngine.tsx`): `generateEntities` pulls the subjects,
+  objects, setting, and a "Scene" group; `generateEntityQuestions` asks deep
+  per-entity questions. Question ids namespaced `<entityId>_…`.
+- **Multi-select:** each question carries a `multi` flag — the AI sets it
+  true for attributes that co-exist (traits, clothing, colors) so the user
+  picks several **and** types their own; false for exclusive choices.
+  Answers are stored comma-joined; single-select replaces, multi toggles.
 - **Hybrid split (locked with the user):** the enumerated technical picks
-  (aspect ratio, duration, style, motion…) stay as instant fixed taps on
-  the spec; the AI generates only the **subject/detail** questions. Two
-  levels: overall → sections → per-section questions (`lib/questions.ts`,
-  `lib/analyze.ts`, `components/QuestionEngine.tsx`).
-- **Answers → prompt:** every answer accumulates in `qa.answers` and
-  `composeSubject()` weaves them into the subject the deterministic
-  compilers see. Compilation stays 100% deterministic; the AI only asks.
-- **Skippable & additive:** answer only what matters; question ids are
-  namespaced (`o_…`, `s_<section>_…`); the whole tree persists to
-  localStorage (defensively sanitized).
-- **Tests:** the three generators over both transports (id namespacing,
-  JSON salvage, error passthrough), `composeSubject`/`buildAnswered`, the
-  route handler, and a browser e2e (generate → chip answer → deep
-  analysis → section answer → both woven into the compiled prompt →
-  persistence).
+  (aspect ratio, duration, style, motion) stay as instant fixed taps; the AI
+  asks only the subject/detail questions.
+- **Answers → prompt = an AI write-up, not a comma dump.** On *Generate*,
+  `composeScene` weaves the idea + answers into 1–3 sentences of coherent
+  prose, which the deterministic compilers then wrap with platform mechanics
+  (aspect flags, model routing, negatives). Fallback to the deterministic
+  comma-join (`composeSubject`) when there's no key or nothing answered.
+  Results are on-demand (an AI call) and go stale when inputs change.
+- **Skippable & persistent:** answer only what matters; the whole entity
+  tree + answers persist to localStorage (defensively sanitized).
+- **Never lost, never re-asked:** the parent owns the QA state and
+  `QuestionEngine` updates it with **functional** setters, so a slow
+  question-fetch completing can't clobber an answer picked meanwhile. Each
+  entity generates its questions once (a ref guard blocks re-open/double
+  fetch), and the model is given the `alreadyAsked` list so it doesn't
+  repeat a question on another entity.
+- **Tests:** the generators + `composeScene` over both transports (id
+  namespacing, `multi` flag, JSON salvage, empty-prompt guard), the question
+  helpers, the route handler, and a browser e2e (extract entities →
+  multi-select young adult + female → AI-composed prose prompt, verified
+  *not* a comma dump → persistence).
 
 ### Transport & providers (BYOK, any provider, one at a time)
 

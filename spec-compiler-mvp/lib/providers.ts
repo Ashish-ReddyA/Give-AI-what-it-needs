@@ -10,6 +10,15 @@
 //
 // This module is imported by BOTH the browser (AssistPanel, analyze) and
 // the server route, so it stays pure data — no browser/node-only APIs.
+//
+// defaultModel values verified 2026-07-24. Model IDs drift — each is
+// editable in the UI, so a stale default is a nuisance, not a breakage.
+// Free-tier notes (for a free key from each provider):
+//   NVIDIA  — free `nvapi-` key (NVIDIA Developer Program, no card, ~40 rpm)
+//   Google  — free tier ~30 rpm / 1500 rpd
+//   Groq    — gpt-oss models are on the free tier
+//   OpenRouter — `:free` model variants exist (rotate; not used as default)
+//   OpenAI / Mistral — paid (Mistral has a limited free experiment tier)
 
 export type ProviderKind = "anthropic" | "openai-compat";
 
@@ -62,7 +71,9 @@ export const PROVIDERS: Record<string, Provider> = {
     label: "Google (Gemini)",
     kind: "openai-compat",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    defaultModel: "gemini-2.0-flash",
+    // gemini-2.0-flash was shut off 2026-03-03; 2.5-flash-lite is the cheap
+    // current flash on the free tier.
+    defaultModel: "gemini-2.5-flash-lite",
     keysUrl: "https://aistudio.google.com/apikey",
     keyHint: "AIza...",
   },
@@ -71,7 +82,9 @@ export const PROVIDERS: Record<string, Provider> = {
     label: "Groq",
     kind: "openai-compat",
     baseUrl: "https://api.groq.com/openai/v1",
-    defaultModel: "llama-3.3-70b-versatile",
+    // llama-3.3-70b-versatile is deprecated (stops ~Aug 2026); gpt-oss-20b
+    // is Groq's small/fast free-tier replacement.
+    defaultModel: "openai/gpt-oss-20b",
     keysUrl: "https://console.groq.com/keys",
     keyHint: "gsk_...",
   },

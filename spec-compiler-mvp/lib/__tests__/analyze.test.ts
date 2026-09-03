@@ -121,8 +121,8 @@ describe("generateEntityQuestions", () => {
           {
             text: JSON.stringify({
               questions: [
-                { id: "traits", question: "Barista traits?", options: ["young adult", "female"], multi: true },
-                { id: "pose", question: "Pose?", options: ["pouring"], multi: false },
+                { id: "traits", aspectId: "appearance", question: "Barista traits?", options: ["young adult", "female"], multi: true },
+                { id: "pose", aspectId: "pose_posture", question: "Pose?", options: ["pouring"], multi: false },
                 { question: "" }, // dropped
               ],
             }),
@@ -131,10 +131,12 @@ describe("generateEntityQuestions", () => {
         ),
       }
     );
-    expect(questions).toHaveLength(2);
-    expect(questions[0].id).toBe("barista_traits");
-    expect(questions[0].multi).toBe(true);
-    expect(questions[1].multi).toBe(false);
+    expect(questions).toHaveLength(9); // every person blueprint aspect is covered
+    const appearance = questions.find((q) => q.aspectId === "appearance");
+    const pose = questions.find((q) => q.aspectId === "pose_posture");
+    expect(appearance?.id).toBe("barista_traits");
+    expect(appearance?.multi).toBe(true);
+    expect(pose?.multi).toBe(false);
 
     const r = captured[0];
     expect(r.url).toBe("/api/analyze");
@@ -164,6 +166,7 @@ describe("generateEntityQuestions", () => {
               questions: [
                 {
                   id: "contents",
+                  aspectId: "environment_contents",
                   question: "What else is in the cafe?",
                   options: [
                     "multi",
@@ -184,13 +187,14 @@ describe("generateEntityQuestions", () => {
         ),
       }
     );
-    expect(questions[0].options).toEqual([
+    const contents = questions.find((q) => q.aspectId === "environment_contents");
+    expect(contents?.options).toEqual([
       "plants",
       "flowers",
       "other customers",
       "music playing",
     ]);
-    expect(questions[0].multi).toBe(true);
+    expect(contents?.multi).toBe(true);
   });
 
   it("pulls a string out of object-shaped options and dedupes", async () => {
@@ -210,6 +214,7 @@ describe("generateEntityQuestions", () => {
               questions: [
                 {
                   id: "fur",
+                  aspectId: "texture_finish",
                   question: "Fur?",
                   options: [
                     { value: "orange tabby" },
@@ -226,7 +231,8 @@ describe("generateEntityQuestions", () => {
         ),
       }
     );
-    expect(questions[0].options).toEqual(["orange tabby", "black", "white"]);
+    const texture = questions.find((q) => q.aspectId === "texture_finish");
+    expect(texture?.options).toEqual(["orange tabby", "black", "white"]);
   });
 
   it("defaults multi to false when the model omits it", async () => {
@@ -240,10 +246,10 @@ describe("generateEntityQuestions", () => {
         providerId: "groq",
         apiKey: "gsk",
         model: "openai/gpt-oss-20b",
-        fetch: capture({ text: '{"questions":[{"id":"fur","question":"Fur?","options":["orange"]}]}' }, []),
+        fetch: capture({ text: '{"questions":[{"id":"fur","aspectId":"texture_finish","question":"Fur?","options":["orange"]}]}' }, []),
       }
     );
-    expect(questions[0].multi).toBe(false);
+    expect(questions.find((q) => q.aspectId === "texture_finish")?.multi).toBe(false);
   });
 });
 
@@ -302,6 +308,7 @@ describe("grounding — the cafe-at-sunrise bug", () => {
             questions: [
               {
                 id: "subject",
+                aspectId: "scene_lighting",
                 question: "Is there a cat or a dog in the scene?",
                 options: ["a cat", "a dog", "warm sunrise light", "soft steam"],
                 multi: true,
@@ -313,9 +320,10 @@ describe("grounding — the cafe-at-sunrise bug", () => {
     );
     // The animal cliches the user hit must be gone; the idea-relevant options
     // (sunrise light, steam) survive.
-    expect(questions[0].options).not.toContain("a cat");
-    expect(questions[0].options).not.toContain("a dog");
-    expect(questions[0].options).toEqual(["warm sunrise light", "soft steam"]);
+    const lighting = questions.find((q) => q.aspectId === "scene_lighting");
+    expect(lighting?.options).not.toContain("a cat");
+    expect(lighting?.options).not.toContain("a dog");
+    expect(lighting?.options).toEqual(["warm sunrise light", "soft steam"]);
   });
 
   it("keeps animal options when the idea actually mentions that animal", async () => {
@@ -336,6 +344,7 @@ describe("grounding — the cafe-at-sunrise bug", () => {
             questions: [
               {
                 id: "fur",
+                aspectId: "texture_finish",
                 question: "What kind of cat?",
                 options: ["orange tabby cat", "black cat", "a ceramic cup"],
                 multi: true,
@@ -345,7 +354,7 @@ describe("grounding — the cafe-at-sunrise bug", () => {
         }),
       }
     );
-    expect(questions[0].options).toEqual([
+    expect(questions.find((q) => q.aspectId === "texture_finish")?.options).toEqual([
       "orange tabby cat",
       "black cat",
       "a ceramic cup",
@@ -394,15 +403,17 @@ describe("question dedup — the girl/coin repeat bug", () => {
         fetch: okCapture({
           text: JSON.stringify({
             questions: [
-              { id: "size", question: "What size is the coin?", options: ["small", "large"], multi: false },
-              { id: "color", question: "What color is the coin?", options: ["gold", "silver"], multi: false },
+              { id: "size", aspectId: "size_scale", question: "What size is the coin?", options: ["small", "large"], multi: false },
+              { id: "color", aspectId: "color_material", question: "What color is the coin?", options: ["gold", "silver"], multi: false },
             ],
           }),
         }),
       }
     );
-    // The rephrased size question is dropped as a repeat; color survives.
-    expect(questions.map((q) => q.question)).toEqual(["What color is the coin?"]);
+    // The rephrased size question is dropped as a repeat; color survives and
+    // deterministic fallbacks cover the other object aspects.
+    expect(questions.map((q) => q.question)).not.toContain("What size is the coin?");
+    expect(questions.map((q) => q.question)).toContain("What color is the coin?");
   });
 
   it("keeps genuinely different attributes on the second entity", async () => {
@@ -421,18 +432,16 @@ describe("question dedup — the girl/coin repeat bug", () => {
         fetch: okCapture({
           text: JSON.stringify({
             questions: [
-              { id: "material", question: "What metal is the coin made of?", options: ["gold", "silver"], multi: false },
-              { id: "wear", question: "Is the coin worn or pristine?", options: ["worn", "pristine"], multi: false },
+              { id: "material", aspectId: "color_material", question: "What metal is the coin made of?", options: ["gold", "silver"], multi: false },
+              { id: "wear", aspectId: "condition_state", question: "Is the coin worn or pristine?", options: ["worn", "pristine"], multi: false },
             ],
           }),
         }),
       }
     );
-    expect(questions).toHaveLength(2);
-    expect(questions.map((q) => q.question)).toEqual([
-      "What metal is the coin made of?",
-      "Is the coin worn or pristine?",
-    ]);
+    expect(questions).toHaveLength(5); // all object aspects covered
+    expect(questions.map((q) => q.question)).toContain("What metal is the coin made of?");
+    expect(questions.map((q) => q.question)).toContain("Is the coin worn or pristine?");
   });
 
   it("drops a repeat within the same batch too", async () => {
@@ -451,18 +460,18 @@ describe("question dedup — the girl/coin repeat bug", () => {
         fetch: okCapture({
           text: JSON.stringify({
             questions: [
-              { id: "size", question: "What is the size of the coin?", options: [], multi: false },
-              { id: "size2", question: "What size is the coin?", options: [], multi: false },
-              { id: "color", question: "What color is the coin?", options: [], multi: false },
+              { id: "size", aspectId: "size_scale", question: "What is the size of the coin?", options: [], multi: false },
+              { id: "size2", aspectId: "size_scale", question: "What size is the coin?", options: [], multi: false },
+              { id: "color", aspectId: "color_material", question: "What color is the coin?", options: [], multi: false },
             ],
           }),
         }),
       }
     );
-    expect(questions.map((q) => q.question)).toEqual([
-      "What is the size of the coin?",
-      "What color is the coin?",
-    ]);
+    expect(questions).toHaveLength(5); // duplicate removed, missing aspects backfilled
+    expect(questions.filter((q) => q.aspectId === "size_scale")).toHaveLength(1);
+    expect(questions.map((q) => q.question)).toContain("What is the size of the coin?");
+    expect(questions.map((q) => q.question)).toContain("What color is the coin?");
   });
 });
 
@@ -487,9 +496,9 @@ describe("question thoroughness — the missing-top bug", () => {
     };
   }
 
-  it("sends the person completeness checklist (hair, top, bottom, footwear, ...)", async () => {
+  it("sends and enforces the person blueprint (hair, top, bottom, footwear, ...)", async () => {
     const captured: Captured[] = [];
-    await generateEntityQuestions(
+    const generated = await generateEntityQuestions(
       "image",
       "a girl walking in the forest",
       { id: "girl", label: "Girl" },
@@ -503,15 +512,16 @@ describe("question thoroughness — the missing-top bug", () => {
       }
     );
     const system = String(captured[0].body.system);
-    // The checklist must explicitly demand BOTH top and bottom clothing so a
-    // weak model can't skip the top while covering the skirt.
-    expect(system).toMatch(/top clothing/i);
-    expect(system).toMatch(/bottom clothing/i);
-    expect(system).toMatch(/hair/i);
-    expect(system).toMatch(/footwear/i);
-    expect(system).toMatch(/facial expression/i);
-    // The exhaustiveness instruction must be present.
-    expect(system).toMatch(/do not skip any aspect/i);
+    // The blueprint must explicitly demand BOTH top and bottom clothing so a
+    // weak model cannot skip the top while covering the skirt.
+    expect(system).toMatch(/aspectId "top_clothing"/i);
+    expect(system).toMatch(/aspectId "bottom_clothing"/i);
+    expect(system).toMatch(/aspectId "hair"/i);
+    expect(system).toMatch(/aspectId "footwear"/i);
+    expect(system).toMatch(/aspectId "expression_gaze"/i);
+    // Empty/malformed model output is backfilled deterministically.
+    expect(generated).toHaveLength(9);
+    expect(generated.find((q) => q.aspectId === "top_clothing")?.question).toMatch(/upper body/i);
   });
 
   it("a place entity gets the place checklist, not the person one", async () => {
@@ -530,10 +540,10 @@ describe("question thoroughness — the missing-top bug", () => {
       }
     );
     const system = String(captured[0].body.system);
-    expect(system).toMatch(/what is in it/i);
-    expect(system).toMatch(/lighting/i);
-    // Should NOT carry the person clothing checklist.
-    expect(system).not.toMatch(/top clothing/i);
+    expect(system).toMatch(/aspectId "environment_contents"/i);
+    expect(system).toMatch(/aspectId "lighting"/i);
+    // Should NOT carry the person clothing blueprint.
+    expect(system).not.toMatch(/aspectId "top_clothing"/i);
   });
 
   it("deep depth requests more questions and finer sub-attributes", async () => {
@@ -553,11 +563,10 @@ describe("question thoroughness — the missing-top bug", () => {
       "deep"
     );
     const system = String(captured[0].body.system);
-    // Deep asks for more questions and for finer sub-attributes like fabric fit
-    // and the exact arc of motion (video-specific).
-    expect(system).toMatch(/5 to 10/);
-    expect(system).toMatch(/fabric and fit/i);
-    expect(system).toMatch(/arc of (?:their )?motion/i);
+    // Deep asks for finer sub-attributes with stable aspect IDs.
+    expect(system).toMatch(/aspectId "clothing_detail"/i);
+    expect(system).toMatch(/fabric, seams, texture, fit/i);
+    expect(system).toMatch(/aspectId "motion_arc"/i);
   });
 
   it("image domain deep depth drops video-only sub-attributes", async () => {
@@ -577,8 +586,8 @@ describe("question thoroughness — the missing-top bug", () => {
       "deep"
     );
     const system = String(captured[0].body.system);
-    // A still image has no motion arc — that deep extra must be stripped.
-    expect(system).not.toMatch(/arc of (?:their )?motion/i);
+    // A still image has no motion arc — that deep aspect must be absent.
+    expect(system).not.toMatch(/aspectId "motion_arc"/i);
   });
 });
 

@@ -20,6 +20,14 @@ import { z } from "zod/v4";
 import { Domain } from "./types";
 import { PROVIDERS } from "./providers";
 import { Question, Entity } from "./questions";
+import {
+  AspectBlueprint,
+  fallbackQuestion,
+  getAspectBlueprints,
+  QuestionDepth,
+} from "./question-blueprints";
+
+export type { QuestionDepth } from "./question-blueprints";
 
 // ---- schemas (Anthropic structured outputs) ----
 
@@ -27,6 +35,7 @@ const QuestionsSchema = z.object({
   questions: z.array(
     z.object({
       id: z.string(),
+      aspectId: z.string().optional(),
       question: z.string(),
       options: z.array(z.string()),
       multi: z.boolean(),
@@ -62,147 +71,35 @@ Return 3 to 7 elements, main subject first and "Scene" last, each with a short s
 ${GROUNDING}`;
 }
 
-// Explicit completeness checklists per entity KIND. This is what makes a weak
-// model thorough: instead of "cover its appearance" (which a small model
-// interprets narrowly and skips aspects — the user's bug: asked about the skirt
-// but not the top), we hand the model a concrete list of EVERY aspect to cover
-// for that kind of thing. A weak model follows the list and asks about the top
-// because the list says to. The list is the scaffolding; the model fills values.
-//
-// Each checklist is written so the aspects are mutually distinct (no two ask
-// the same thing) and exhaustive for that kind, so nothing important is silent.
-const PERSON_CHECKLIST = [
-  "hair (style, length, color)",
-  "top clothing (shirt, jacket, sweater — what is on the upper body)",
-  "bottom clothing (pants, skirt, shorts — what is on the lower body)",
-  "footwear (shoes, boots, barefoot)",
-  "accessories (bag, jewelry, glasses, hat)",
-  "pose and posture (standing, walking, sitting, leaning)",
-  "facial expression and where they are looking",
-  "what they are doing (the action, if any)",
-  "age range and build",
-];
-const PLACE_CHECKLIST = [
-  "what is in it (furniture, plants, objects the idea names or implies)",
-  "lighting (source, direction, warmth)",
-  "time of day and weather if outdoors",
-  "color palette and materials of the surfaces",
-  "depth and scale (tight interior, wide landscape)",
-  "atmosphere (busy, empty, calm, tense)",
-];
-const DRINK_CHECKLIST = [
-  "the vessel (cup, glass, mug — material and color)",
-  "state (still, being poured, steaming, splashing)",
-  "color and opacity of the liquid",
-  "foam, layering, or surface detail",
-  "what it is being poured from, if pouring",
-];
-const OBJECT_CHECKLIST = [
-  "size (relative to a hand or the scene)",
-  "color and material",
-  "texture and finish (matte, glossy, worn)",
-  "state (new, aged, damaged, open, closed)",
-  "orientation and where it rests",
-];
-const SCENE_CHECKLIST = [
-  "overall mood and emotional tone",
-  "lighting (quality, direction, color temperature)",
-  "time of day",
-  "weather or atmosphere (if relevant)",
-  "color palette of the whole frame",
-  "for video: how the moment unfolds and the pacing of motion",
-];
-
-// Map an entity label to its kind so we pick the right checklist. Falls back
-// to object for anything unrecognized. Crude but reliable for weak models.
-function checklistFor(label: string): string[] {
-  const l = label.toLowerCase();
-  if (l === "scene") return SCENE_CHECKLIST;
-  if (/(barista|girl|boy|woman|man|person|child|kid|lady|guy|portrait|figure|character|chef|worker|dancer)/.test(l)) return PERSON_CHECKLIST;
-  if (/(cafe|forest|room|street|beach|mountain|field|garden|kitchen|office|city|landscape|interior|alley|park|shop|bar|restaurant|library)/.test(l)) return PLACE_CHECKLIST;
-  if (/(latte|coffee|tea|drink|juice|wine|beer|water|soup|sauce|milk|cocktail)/.test(l)) return DRINK_CHECKLIST;
-  return OBJECT_CHECKLIST;
-}
-
-function renderChecklist(items: string[]): string {
-  return items.map((it) => `  - ${it}`).join("\n");
-}
-
-/** Depth of questioning. "standard" = the completeness checklist (thorough).
- * "deep" = even more fine-grained sub-attributes, used by the More-detail button. */
-export type QuestionDepth = "standard" | "deep";
-
-const DEEP_EXTRA: Record<string, string[]> = {
-  person: [
-    "fabric and fit of each clothing item (loose, fitted, flowing)",
-    "how the clothing moves while they act (for video)",
-    "fine facial features (eye color, jaw, skin tone)",
-    "gaze direction and micro-expression",
-    "the exact arc of their motion (for video: entry, peak, exit)",
-  ],
-  place: [
-    "where the camera sits in the space (for video: does it move?)",
-    "background vs foreground detail levels",
-    "sound-implying motion (leaves rustling, steam, footsteps) for video",
-    "edge of frame — what is just outside it",
-  ],
-  drink: [
-    "the exact pour trajectory and splash detail (for video)",
-    "condensation or steam behavior over time (for video)",
-    "refraction and how light passes through the liquid",
-  ],
-  object: [
-    "wear patterns, nicks, patina, engraving",
-    "how it catches or reflects the light",
-    "for video: does it move, spin, fall, or stay still",
-  ],
-  scene: [
-    "shot-to-shot rhythm and how long each beat holds (video)",
-    "transitions and how motion carries between them",
-    "the single most important moment in the clip",
-    "ambient motion that sells the mood (drifting dust, swaying branches)",
-  ],
-};
-
-function deepExtrasFor(label: string, domain: Domain): string[] {
-  const l = label.toLowerCase();
-  let kind = "object";
-  if (l === "scene") kind = "scene";
-  else if (/(barista|girl|boy|woman|man|person|child|kid|lady|guy|portrait|figure|character|chef|worker|dancer)/.test(l)) kind = "person";
-  else if (/(cafe|forest|room|street|beach|mountain|field|garden|kitchen|office|city|landscape|interior|alley|park|shop|bar|restaurant|library)/.test(l)) kind = "place";
-  else if (/(latte|coffee|tea|drink|juice|wine|beer|water|soup|sauce|milk|cocktail)/.test(l)) kind = "drink";
-  const extras = DEEP_EXTRA[kind] ?? DEEP_EXTRA.object;
-  // For image domain, drop the video-only deep extras so we don't ask about
-  // motion in a still.
-  if (domain === "image") return extras.filter((e) => !/video|motion|pour trajectory|splash|steam over time|shot-to-shot|transitions|ambient motion|drifting|swaying|how .* moves?/.test(e));
-  return extras;
+// The engine sends a deterministic aspect blueprint to the model. The model
+// tailors wording and options to the user's idea, but code owns completeness:
+// if the model omits an aspect, a fallback question is inserted afterward.
+function renderBlueprints(items: AspectBlueprint[]): string {
+  return items
+    .map((item) => `  - aspectId "${item.id}": ${item.description}`)
+    .join("\n");
 }
 
 function entityQuestionsSystem(
   domain: Domain,
-  label: string,
+  entity: Entity,
   depth: QuestionDepth = "standard"
 ): string {
   const medium = domain === "video" ? "video clip" : "image";
-  const scene = label.toLowerCase() === "scene";
-  const checklist = checklistFor(label);
-  const baseCount = depth === "deep" ? "5 to 10" : "4 to 8";
-  // The completeness list is the core of the thoroughness fix. Tell the model
-  // to ask ONE question per checklist aspect it hasn't already covered, so a
-  // weak model doesn't skip anything (the "asked about the skirt, not the top"
-  // bug). Standard depth already covers every aspect; deep adds sub-attributes.
-  const checklistText =
-    depth === "deep"
-      ? `${renderChecklist(checklist)}\n  AND these finer sub-attributes:\n${renderChecklist(deepExtrasFor(label, domain))}`
-      : renderChecklist(checklist);
-  const focus = scene
-    ? `Cover EACH of these scene aspects (ask one question per aspect unless the idea already settled it):\n${checklistText}`
-    : `Cover the "${label}" as a thing in itself, asking ONE question per aspect below — do NOT skip any aspect the idea has not already settled. A question about another entity belongs on that entity's card, not here. Aspects:\n${checklistText}`;
-  return `The user is specifying the "${label}" in their AI-generated ${medium}. Ask ${baseCount} detailed questions about ONLY "${label}", each grounded in the idea. ${focus}
+  const blueprints = getAspectBlueprints(entity, domain, depth);
+  return `You tailor a deterministic question plan for the "${entity.label}" in an AI-generated ${medium}.
 
-CRITICAL: be exhaustive across the aspects above. Do not collapse two aspects into one question and do not skip an aspect because you think it is minor — the user decides what is minor by leaving it blank. If the idea already states an aspect (e.g. "walking"), still ask about its specifics (gait, speed, direction) rather than skipping it, unless it is fully pinned.
+The application requires EXACTLY ONE useful question for EACH aspectId below. Return every aspectId once, in this order. Do not add other aspects and do not omit one:
+${renderBlueprints(blueprints)}
 
-For an attribute where several values can sensibly co-exist (traits, clothing items, colors), set "multi": true so the user can pick more than one. For a mutually-exclusive choice (a single pose, one time of day), set "multi": false. Order by impact, but cover every aspect.
+For each aspect, write a concrete question about ONLY "${entity.label}" and 3-6 short answer options that fit the user's actual idea. Use an empty options array only when presets would force assumptions. Set multi=true only when several answers can coexist.
+
+Efficiency rules:
+- Do not explain your reasoning.
+- Do not merge aspects into one question.
+- Do not ask about another entity's attributes.
+- Use the exact aspectId supplied above so the application can verify coverage.
+- If alreadyAnswered fully settles an aspect, still return its aspectId but ask for the next finer detail within that same aspect instead of repeating the settled fact.
 
 ${GROUNDING}
 
@@ -214,7 +111,7 @@ function composeSystem(domain: Domain): string {
   return `You write a single, vivid, coherent ${medium} prompt. Given the user's idea and their structured answers, weave EVERYTHING into natural, flowing description — do NOT output a comma-separated list of fragments, and do NOT invent details the user didn't give. Only use the idea and the answers; if an answer is blank, do not fabricate a value for it. Keep it to 1-3 sentences, concrete and visual. Do not mention aspect ratio, resolution, duration, or camera/render settings — those are added separately. Respond with ONLY a JSON object {"prompt": "..."}.`;
 }
 
-const QUESTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"questions":[{"id":"short_snake_id","question":"...","options":["...","..."],"multi":false}]}. Each entry in "options" is a plain descriptive string ONLY — never the word "multi" or any field name. "multi" is a separate boolean sibling of "options", not an option value. No prose, no markdown code fences.`;
+const QUESTIONS_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"questions":[{"id":"short_snake_id","aspectId":"exact_blueprint_aspect_id","question":"...","options":["...","..."],"multi":false}]}. Return every required aspectId exactly once. Each entry in "options" is a plain descriptive string ONLY — never the word "multi" or any field name. "multi" is a separate boolean sibling of "options", not an option value. No prose, no markdown code fences.`;
 const ENTITIES_CONTRACT = `\n\nRespond with ONLY a JSON object of the form {"entities":[{"id":"short_snake_id","label":"Barista"}]}. No prose, no markdown code fences.`;
 const SCENE_CONTRACT = `\n\n(Return ONLY {"prompt":"..."}.)`;
 
@@ -511,6 +408,7 @@ function normalizeQuestions(
     seen.add(id);
     out.push({
       id,
+      aspectId: str(r.aspectId) || str(r.aspect) || str(r.id) || undefined,
       question,
       options: normalizeOptions(r.options, idea, entityLabel),
       multi: r.multi === true,
@@ -569,7 +467,7 @@ export async function generateEntityQuestions(
     alreadyAsked,
   });
   const obj = await runStructured(
-    entityQuestionsSystem(domain, entity.label, depth),
+    entityQuestionsSystem(domain, entity, depth),
     QUESTIONS_CONTRACT,
     content,
     QuestionsSchema,
@@ -581,13 +479,47 @@ export async function generateEntityQuestions(
   // asked under Girl, then again under Coin) is dropped in code, not left to
   // the model's judgment. Weak models rephrase instead of copying.
   const alreadyAskedCanonical = alreadyAsked.map(canonicalQuestion);
-  return normalizeQuestions(
+  const normalized = normalizeQuestions(
     obj.questions,
     `${entity.id}_`,
     idea,
     entity.label,
     alreadyAskedCanonical
   );
+
+  // Deterministic coverage guarantee. The model tailors questions and options,
+  // but code owns which aspects must exist. Keep at most one model question per
+  // blueprint aspect, in blueprint order. If the model omitted an aspect or
+  // returned malformed JSON for it, insert a useful local fallback question.
+  // Do not insert a fallback when that conceptual question was already asked on
+  // another entity — cross-entity dedup still wins.
+  const blueprints = getAspectBlueprints(entity, domain, depth);
+  const byAspect = new Map<string, Question>();
+  for (const q of normalized) {
+    if (q.aspectId && !byAspect.has(q.aspectId)) byAspect.set(q.aspectId, q);
+  }
+  const complete: Question[] = [];
+  const completeCanonical: string[] = [];
+  for (const blueprint of blueprints) {
+    const tailored = byAspect.get(blueprint.id);
+    if (tailored) {
+      complete.push(tailored);
+      completeCanonical.push(canonicalQuestion(tailored.question));
+      continue;
+    }
+    const fallback = fallbackQuestion(
+      blueprint,
+      entity,
+      domain,
+      `${entity.id}_${depth}_`
+    );
+    if (isRepeat(fallback.question, alreadyAskedCanonical, completeCanonical)) {
+      continue;
+    }
+    complete.push(fallback);
+    completeCanonical.push(canonicalQuestion(fallback.question));
+  }
+  return complete;
 }
 
 /** Weave the idea + answered details into one coherent prompt (prose). */

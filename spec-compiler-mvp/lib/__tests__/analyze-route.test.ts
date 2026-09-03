@@ -63,13 +63,41 @@ describe("/api/analyze proxy", () => {
     });
     await POST(
       req(
-        { provider: "nvidia", model: "meta/llama-3.1-8b-instruct", system: "S", user: "U" },
+        { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct", system: "S", user: "U" },
         { "x-provider-key": "nvapi-x" }
       )
     );
     expect(calls[0].url).toBe(
       "https://integrate.api.nvidia.com/v1/chat/completions"
     );
+  });
+
+  it("forwards a bounded maxTokens override for advanced questions", async () => {
+    const { calls } = stubUpstream(200, {
+      choices: [{ message: { content: "{}" } }],
+    });
+    await POST(
+      req(
+        { provider: "openai", model: "m", system: "s", user: "u", maxTokens: 2500 },
+        { "x-provider-key": "k" }
+      )
+    );
+    const sent = JSON.parse(String(calls[0].init.body));
+    expect(sent.max_tokens).toBe(2500);
+  });
+
+  it("clamps excessive maxTokens requests", async () => {
+    const { calls } = stubUpstream(200, {
+      choices: [{ message: { content: "{}" } }],
+    });
+    await POST(
+      req(
+        { provider: "openai", model: "m", system: "s", user: "u", maxTokens: 99999 },
+        { "x-provider-key": "k" }
+      )
+    );
+    const sent = JSON.parse(String(calls[0].init.body));
+    expect(sent.max_tokens).toBe(4096);
   });
 
   it("rejects a missing key", async () => {

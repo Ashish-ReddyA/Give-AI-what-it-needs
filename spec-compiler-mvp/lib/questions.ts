@@ -16,6 +16,8 @@ import { answeredImageFields, answeredVideoFields } from "./analyze-core";
 export interface Question {
   /** Globally-unique key for the answers map (namespaced at generation). */
   id: string;
+  /** Stable blueprint aspect this question covers. Optional for persisted v1 data. */
+  aspectId?: string;
   question: string;
   /** AI-suggested answers; may be empty for open questions. Also free-text. */
   options: string[];

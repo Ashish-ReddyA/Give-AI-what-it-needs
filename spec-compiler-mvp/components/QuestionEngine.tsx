@@ -132,6 +132,7 @@ export default function QuestionEngine({
   const [busyEntities, setBusyEntities] = useState(false);
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [deepening, setDeepening] = useState<Set<string>>(new Set());
+  const [deepened, setDeepened] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   // Entities whose questions are loaded or in flight — prevents a second
@@ -212,7 +213,7 @@ export default function QuestionEngine({
   // new questions into the existing ones, dropping any that paraphrase-repeat
   // questions already shown. This is the "More detail" button.
   const deepenEntity = async (entity: Entity) => {
-    if (!config || deepening.has(entity.id)) return;
+    if (!config || deepening.has(entity.id) || deepened.has(entity.id)) return;
     setDeepening((prev) => new Set(prev).add(entity.id));
     setError(null);
     try {
@@ -238,6 +239,10 @@ export default function QuestionEngine({
           entityQuestions: { ...prev.entityQuestions, [entity.id]: merged },
         };
       });
+      // One deep pass covers a deterministic advanced blueprint. Disable the
+      // button afterward so repeated clicks do not spend the user's credits on
+      // an identical request.
+      setDeepened((prev) => new Set(prev).add(entity.id));
     } catch (e) {
       setError(friendly(e));
     } finally {
@@ -376,13 +381,15 @@ export default function QuestionEngine({
                       <button
                         type="button"
                         onClick={() => deepenEntity(entity)}
-                        disabled={deepening.has(entity.id)}
+                        disabled={deepening.has(entity.id) || deepened.has(entity.id)}
                         className="w-full mt-1 py-1.5 font-mono text-[10px] uppercase tracking-wide text-inkMuted border border-dashed border-line rounded-sm hover:border-ink hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
                       >
                         {deepening.has(entity.id) ? (
                           <>
                             <Loader2 size={11} className="animate-spin" /> digging deeper…
                           </>
+                        ) : deepened.has(entity.id) ? (
+                          <>deep detail added</>
                         ) : (
                           <>+ more detail</>
                         )}

@@ -88,11 +88,19 @@ export async function POST(req: Request): Promise<Response> {
 
   const raw = await upstream.text();
   if (!upstream.ok) {
-    // Surface the provider's own error, but never echo the key.
+    // Surface the provider's own error, but never echo the key. Different
+    // providers put the message in different fields: OpenAI/Mistral use
+    // error.message, Google uses message, NVIDIA uses detail. Read all of
+    // them so a dead-model 410 (NVIDIA) reads as a clear, actionable message
+    // instead of a bare status code.
     let message = `${provider.label} returned ${upstream.status}.`;
     try {
       const parsed = JSON.parse(raw);
-      message = parsed?.error?.message || parsed?.message || message;
+      message =
+        parsed?.error?.message ||
+        parsed?.message ||
+        parsed?.detail ||
+        message;
     } catch {
       /* non-JSON error body — keep the generic message */
     }

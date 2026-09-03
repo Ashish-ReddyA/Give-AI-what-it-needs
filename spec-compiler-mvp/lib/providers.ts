@@ -62,7 +62,12 @@ export const PROVIDERS: Record<string, Provider> = {
     label: "NVIDIA",
     kind: "openai-compat",
     baseUrl: "https://integrate.api.nvidia.com/v1",
-    defaultModel: "meta/llama-3.1-8b-instruct",
+    // meta/llama-3.1-8b-instruct hit end-of-life on 2026-08-26 (NVIDIA now
+    // returns 410 Gone for it). nemotron-70b-instruct is a current, strong
+    // instruction model that handles the JSON-mode structured outputs this
+    // app needs. For a lighter free-tier pick, nvidia/mistral-nemo-minitron-8b
+    // or mistralai/mistral-7b-instruct-v0.3 also work.
+    defaultModel: "nvidia/llama-3.1-nemotron-70b-instruct",
     keysUrl: "https://build.nvidia.com",
     keyHint: "nvapi-...",
   },

@@ -3,6 +3,7 @@ import {
   generateEntities,
   generateEntityQuestions,
   composeScene,
+  canonicalQuestion,
 } from "../analyze";
 
 // ---- wire tests: mocked fetch, real request paths ----
@@ -348,6 +349,119 @@ describe("grounding — the cafe-at-sunrise bug", () => {
       "orange tabby cat",
       "black cat",
       "a ceramic cup",
+    ]);
+  });
+});
+
+describe("question dedup — the girl/coin repeat bug", () => {
+  // The user opened "Girl", got "What is the size of the coin?" (a relational
+  // question the model asked while scoped to Girl), then opened "Coin" and got
+  // the same question again. Exact-text dedup missed it because the model
+  // rephrased. The fix is canonical token-bag similarity dedup in code.
+  function okCapture(response: unknown): typeof fetch {
+    return async () =>
+      new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+  }
+
+  it("canonicalQuestion collapses paraphrases to the same bag", () => {
+    const a = canonicalQuestion("What is the size of the coin?");
+    const b = canonicalQuestion("What size is the coin?");
+    const c = canonicalQuestion("How big is the coin?");
+    expect(a).toBe(b);
+    // "how big" stems to the same bag as "what size" after stop-word removal
+    // and stemming — both reduce to {big, coin} / {size, coin}; "big" and
+    // "size" are different tokens so c is NOT equal to a, which is correct:
+    // they're related but not identical. This documents the boundary.
+    expect(a).not.toBe(c);
+  });
+
+  it("drops a paraphrase repeat asked on a second entity", async () => {
+    // Coin returns the SAME conceptual question Girl already asked, but
+    // rephrased. The dedup must drop it even though the text differs.
+    const questions = await generateEntityQuestions(
+      "image",
+      "a girl holding a coin",
+      { id: "coin", label: "Coin" },
+      {},
+      ["What is the size of the coin?"], // already asked under Girl
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: okCapture({
+          text: JSON.stringify({
+            questions: [
+              { id: "size", question: "What size is the coin?", options: ["small", "large"], multi: false },
+              { id: "color", question: "What color is the coin?", options: ["gold", "silver"], multi: false },
+            ],
+          }),
+        }),
+      }
+    );
+    // The rephrased size question is dropped as a repeat; color survives.
+    expect(questions.map((q) => q.question)).toEqual(["What color is the coin?"]);
+  });
+
+  it("keeps genuinely different attributes on the second entity", async () => {
+    // A non-repeat question on Coin must not be dropped — the dedup must not
+    // over-fire and strip everything from the second entity.
+    const questions = await generateEntityQuestions(
+      "image",
+      "a girl holding a coin",
+      { id: "coin", label: "Coin" },
+      {},
+      ["What is the girl wearing?", "What is the girl's pose?"],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: okCapture({
+          text: JSON.stringify({
+            questions: [
+              { id: "material", question: "What metal is the coin made of?", options: ["gold", "silver"], multi: false },
+              { id: "wear", question: "Is the coin worn or pristine?", options: ["worn", "pristine"], multi: false },
+            ],
+          }),
+        }),
+      }
+    );
+    expect(questions).toHaveLength(2);
+    expect(questions.map((q) => q.question)).toEqual([
+      "What metal is the coin made of?",
+      "Is the coin worn or pristine?",
+    ]);
+  });
+
+  it("drops a repeat within the same batch too", async () => {
+    // The model emits the same question twice in one response (weak-model
+    // behavior). The within-batch dedup catches it.
+    const questions = await generateEntityQuestions(
+      "image",
+      "a coin",
+      { id: "coin", label: "Coin" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: okCapture({
+          text: JSON.stringify({
+            questions: [
+              { id: "size", question: "What is the size of the coin?", options: [], multi: false },
+              { id: "size2", question: "What size is the coin?", options: [], multi: false },
+              { id: "color", question: "What color is the coin?", options: [], multi: false },
+            ],
+          }),
+        }),
+      }
+    );
+    expect(questions.map((q) => q.question)).toEqual([
+      "What is the size of the coin?",
+      "What color is the coin?",
     ]);
   });
 });

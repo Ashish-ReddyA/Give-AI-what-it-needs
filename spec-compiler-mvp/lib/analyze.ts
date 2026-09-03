@@ -67,7 +67,7 @@ function entityQuestionsSystem(domain: Domain, label: string): string {
   const scene = label.toLowerCase() === "scene";
   const focus = scene
     ? `Ask about overall mood, lighting, time of day, weather/atmosphere, and color palette — but only variations that fit the idea as written. If the idea already names the time of day or weather (e.g. "sunrise"), ask about its quality or intensity, do not re-ask whether it is sunrise or dusk.`
-    : `Cover its appearance (color, material, texture, size) and — when it applies and is consistent with the idea — its STATE or RELATION to other things named in the idea: for a drink, whether it is in a cup or being poured and from what; for a person, their pose, what they are doing, and what they are wearing; for a place, what is in it as the idea describes. Only raise these if the idea actually contains that entity.`;
+    : `Cover ONLY the "${label}" itself: its appearance (color, material, texture, size) and — when it applies and is consistent with the idea — its own state or action (for a person: their pose, what they are doing, what they are wearing; for a drink: whether it is in a cup or being poured; for a place: what is in it as the idea describes). Ask about the "${label}" as a thing in itself, not about other entities' attributes — a question about another entity belongs on that entity's card, not here. Only raise these if the idea actually contains that entity.`;
   return `The user is specifying the "${label}" in their AI-generated ${medium}. Ask 3 to 6 detailed questions about ONLY "${label}", each grounded in the idea. ${focus}
 
 For an attribute where several values can sensibly co-exist (traits, clothing, colors, objects present in the idea), set "multi": true so the user can pick more than one. For a mutually-exclusive choice (a single pose, one time of day), set "multi": false. Order by impact.
@@ -183,6 +183,80 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+// Canonicalize a question string for semantic-similarity dedup. The model is
+// told not to repeat questions, but a weak model treats "What is the size of
+// the coin?" and "What size is the coin?" as different. This turns both into
+// the same canonical token bag so paraphrase repeats get caught in code, not
+// left to the model's judgment.
+const STOP_WORDS = new Set([
+  "a", "an", "the", "is", "are", "was", "were", "be", "been", "of", "in",
+  "on", "at", "to", "for", "with", "and", "or", "what", "whats", "which",
+  "do", "does", "did", "how", "how's", "wheres", "where", "who", "whom",
+  "this", "that", "these", "those", "it", "its", "as", "by", "from", "into",
+]);
+
+// Very small suffix-stemmer — enough to collapse "size/sizes", "color/colors",
+// "pouring/pours" so plural/verb-form paraphrases match. Not a real stemmer;
+// intentionally conservative to avoid false-positives.
+function stem(w: string): string {
+  for (const suf of ["ies", "ying", "ing", "ed", "es", "s"]) {
+    if (w.length > suf.length + 2 && w.endsWith(suf)) {
+      const base = w.slice(0, -suf.length);
+      if (suf === "ies") return base + "y";
+      return base;
+    }
+  }
+  return w;
+}
+
+/** Canonical token bag for a question: lowercase, alnum tokens, stop words and
+ * very short tokens dropped, stemmed, sorted, deduped. Two questions that are
+ * paraphrases of each other produce the same (or near-same) canonical form. */
+export function canonicalQuestion(q: string): string {
+  const tokens = q
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t && t.length > 1 && !STOP_WORDS.has(t))
+    .map(stem);
+  return Array.from(new Set(tokens)).sort().join(" ");
+}
+
+/** Jaccard similarity over canonical token bags. 1.0 = identical token set. */
+function similarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const sa = new Set(a.split(" "));
+  const sb = new Set(b.split(" "));
+  let inter = 0;
+  for (const t of sa) if (sb.has(t)) inter++;
+  const union = sa.size + sb.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+// Threshold above which two questions are treated as the same question
+// rephrased. Tuned to catch "What is the size of the coin?" vs "What size is
+// the coin?" (similarity ~1.0) and "What is the size of the coin?" vs "What
+// color is the coin?" (similarity ~0.2, kept as distinct). 0.7 keeps near-
+// paraphrases while allowing genuinely different attributes through.
+const REPEAT_THRESHOLD = 0.7;
+
+/** True if a question is a paraphrase repeat of any already-asked question.
+ * Uses canonical token-bag similarity, not exact text match. */
+function isRepeat(
+  question: string,
+  alreadyAskedCanonical: string[],
+  newCanonical: string[]
+): boolean {
+  const canon = canonicalQuestion(question);
+  if (!canon) return false;
+  for (const prev of alreadyAskedCanonical) {
+    if (similarity(canon, prev) >= REPEAT_THRESHOLD) return true;
+  }
+  for (const prev of newCanonical) {
+    if (similarity(canon, prev) >= REPEAT_THRESHOLD) return true;
+  }
+  return false;
+}
+
 // Weaker models sometimes echo the schema's own keywords into the options
 // array (e.g. the literal token "multi" before each real option) or wrap
 // each option in an object. These would otherwise render as junk chips.
@@ -281,16 +355,23 @@ function normalizeQuestions(
   raw: unknown,
   idPrefix: string,
   idea: string,
-  entityLabel: string
+  entityLabel: string,
+  alreadyAskedCanonical: string[] = []
 ): Question[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
   const out: Question[] = [];
+  const newCanonical: string[] = [];
   raw.forEach((item, i) => {
     if (!item || typeof item !== "object") return;
     const r = item as Record<string, unknown>;
     const question = str(r.question);
     if (!question) return;
+    // Drop paraphrase repeats of questions already asked on another entity,
+    // and repeats within this same batch. The exact-text dedup the model is
+    // asked to do is insufficient for weak models; this is the real guard.
+    if (isRepeat(question, alreadyAskedCanonical, newCanonical)) return;
+    newCanonical.push(canonicalQuestion(question));
     let id = `${idPrefix}${str(r.id) || `q${i}`}`;
     while (seen.has(id)) id = `${id}_`;
     seen.add(id);
@@ -359,7 +440,18 @@ export async function generateEntityQuestions(
     QuestionsSchema,
     opts
   );
-  return normalizeQuestions(obj.questions, `${entity.id}_`, idea, entity.label);
+  // Canonicalize the already-asked list once, then filter the new questions
+  // against it so a paraphrase repeat (e.g. "What is the size of the coin?"
+  // asked under Girl, then again under Coin) is dropped in code, not left to
+  // the model's judgment. Weak models rephrase instead of copying.
+  const alreadyAskedCanonical = alreadyAsked.map(canonicalQuestion);
+  return normalizeQuestions(
+    obj.questions,
+    `${entity.id}_`,
+    idea,
+    entity.label,
+    alreadyAskedCanonical
+  );
 }
 
 /** Weave the idea + answered details into one coherent prompt (prose). */

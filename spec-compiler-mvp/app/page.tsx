@@ -236,7 +236,7 @@ export default function Home() {
                   type="button"
                   aria-pressed={domain === mode}
                   onClick={() => switchDomain(mode)}
-                  className={`flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
+                  className={`flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
                     domain === mode
                       ? "bg-surface text-primary shadow-card"
                       : "text-textMuted hover:text-textPrimary"

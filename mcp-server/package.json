@@ -1,6 +1,6 @@
 {
   "name": "spec-compiler-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Ask the few questions AI generation actually needs, then compile one prompt per platform (Midjourney / DALL·E / Higgsfield / Veo 3 / Runway). An MCP server so agents run 'ask first, spend once' in-chat.",
   "keywords": [
     "mcp",

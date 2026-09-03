@@ -28,15 +28,15 @@ function ReceiptCard({
   };
 
   return (
-    <div className="receipt-card perforated-top bg-paperRaised border border-line shadow-sm">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-dashed border-line">
+    <div className="receipt-card perforated-top bg-paperRaised border border-line shadow-cardLg">
+      <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-dashed border-line">
         <span className="font-mono text-xs font-bold uppercase tracking-wide text-ink">
           {result.platform}
         </span>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1 text-xs font-mono text-inkMuted hover:text-ink transition-colors"
+          className="flex items-center gap-1 text-xs font-mono text-inkMuted hover:text-ink transition-colors px-1.5 py-0.5 rounded-sm hover:bg-paper"
         >
           {copied ? (
             <>
@@ -50,16 +50,16 @@ function ReceiptCard({
         </button>
       </div>
 
-      <div className="px-4 py-3">
+      <div className="px-4 py-3.5">
         <p className="font-mono text-sm text-ink leading-relaxed whitespace-pre-wrap break-words">
           {result.prompt}
         </p>
 
         {result.meta && (
-          <div className="mt-3 pt-3 border-t border-dashed border-line space-y-1">
+          <div className="mt-3.5 pt-3 border-t border-dashed border-line space-y-1.5">
             {Object.entries(result.meta).map(([k, v]) => (
               <div key={k} className="flex justify-between font-mono text-xs">
-                <span className="text-inkMuted uppercase">{k}</span>
+                <span className="text-inkFaint uppercase">{k}</span>
                 <span className="text-ink">{v}</span>
               </div>
             ))}
@@ -67,8 +67,8 @@ function ReceiptCard({
         )}
       </div>
 
-      <div className="px-4 pb-3">
-        <p className="font-mono text-[11px] text-inkMuted italic">
+      <div className="px-4 pb-3.5">
+        <p className="font-mono text-[11px] text-inkFaint italic leading-relaxed">
           {result.note}
         </p>
       </div>
@@ -85,9 +85,15 @@ export default function ResultsPanel({
 }) {
   return (
     <div className="space-y-4">
-      <span className="font-mono text-xs uppercase tracking-wide text-inkMuted">
-        Compiled prompts
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-xs uppercase tracking-wide text-ink">
+          Compiled prompts
+        </span>
+        <span className="h-px flex-1 bg-line" />
+        <span className="font-mono text-[10px] text-inkFaint">
+          one per platform · copy to generate
+        </span>
+      </div>
       <div className="grid gap-4 sm:grid-cols-1">
         {results.map((r) => (
           <ReceiptCard key={r.platform} result={r} onCopied={onCopy} />

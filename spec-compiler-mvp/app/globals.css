@@ -5,6 +5,29 @@
 body {
   background-color: #EFEDE4;
   color: #1C1B17;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle paper grain so the warm canvas reads as material, not a flat fill */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(28, 27, 23, 0.025) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
+}
+
+main {
+  position: relative;
+  z-index: 1;
 }
 
 /* Dashed "perforated tear" edge used on receipt cards */
@@ -33,4 +56,35 @@ body {
     0% 4px, 4px 0%, calc(100% - 4px) 0%, 100% 4px,
     100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0% calc(100% - 4px)
   );
+}
+
+/* Focus ring tuned for the paper palette */
+*:focus-visible {
+  outline: 2px solid #1C1B17;
+  outline-offset: 2px;
+  border-radius: 1px;
+}
+
+/* Custom scrollbar for the receipt feel */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #EFEDE4;
+}
+::-webkit-scrollbar-thumb {
+  background: #D8D3C4;
+  border-radius: 5px;
+  border: 2px solid #EFEDE4;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8A8674;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -27,9 +27,9 @@ export default function VideoQuestionFlow({ spec, onChange }: Props) {
         <textarea
           value={spec.idea}
           onChange={(e) => set("idea", e.target.value)}
-          placeholder="e.g. a barista pouring latte art in a sunlit cafe"
-          rows={2}
-          className="w-full bg-paperRaised border border-line rounded-sm px-3 py-2 text-sm font-body text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink resize-none"
+          placeholder="e.g. a barista pouring latte art in a sunlit cafe at sunrise"
+          rows={3}
+          className="w-full bg-paperRaised border border-line rounded-sm px-3 py-2.5 text-sm font-body text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink resize-none transition-colors leading-relaxed"
         />
       </div>
 

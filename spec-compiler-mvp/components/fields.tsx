@@ -12,13 +12,13 @@ export function FieldLabel({
   optional?: boolean;
 }) {
   return (
-    <div className="flex items-baseline gap-2 mb-2">
-      <span className="font-mono text-xs text-inkMuted">{number}</span>
+    <div className="flex items-baseline gap-2 mb-2.5">
+      <span className="font-mono text-[11px] text-inkFaint tabular-nums">{number}</span>
       <h3 className="font-display font-medium text-sm uppercase tracking-wide text-ink">
         {children}
       </h3>
       {optional && (
-        <span className="font-mono text-[10px] text-inkMuted">optional</span>
+        <span className="font-mono text-[10px] text-inkFaint">optional</span>
       )}
     </div>
   );
@@ -37,10 +37,10 @@ export function ChoiceButton({
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-2 text-sm font-mono border rounded-sm transition-colors text-left ${
+      className={`px-3 py-2 text-sm font-mono border rounded-sm transition-all text-left ${
         active
-          ? "bg-ink text-paperRaised border-ink"
-          : "bg-paperRaised text-ink border-line hover:border-ink"
+          ? "bg-ink text-paperRaised border-ink shadow-inset"
+          : "bg-paperRaised text-ink border-line hover:border-ink hover:-translate-y-px"
       }`}
     >
       {children}
@@ -62,7 +62,7 @@ export function TextField({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full bg-paperRaised border border-line rounded-sm px-3 py-2 text-sm font-body text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
+      className="w-full bg-paperRaised border border-line rounded-sm px-3 py-2.5 text-sm font-body text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink transition-colors"
     />
   );
 }

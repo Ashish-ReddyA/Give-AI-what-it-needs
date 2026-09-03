@@ -208,23 +208,29 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen px-4 py-10 sm:py-16">
-      <div className="max-w-xl mx-auto">
-        <header className="mb-8">
-          <p className="font-mono text-xs uppercase tracking-widest text-inkMuted mb-1">
-            Spec Compiler
-          </p>
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-ink leading-tight">
+    <main className="min-h-screen px-4 py-10 sm:py-14 lg:py-20">
+      <div className="max-w-2xl mx-auto">
+        <header className="mb-10">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-inkFaint">
+              Spec Compiler
+            </span>
+            <span className="h-px flex-1 bg-line" />
+            <span className="font-mono text-[10px] uppercase tracking-wide text-inkFaint">
+              BYOK · image + video
+            </span>
+          </div>
+          <h1 className="font-display font-bold text-3xl sm:text-4xl text-ink leading-[1.1] tracking-tight">
             Ask first. Spend once.
           </h1>
-          <p className="font-body text-sm text-inkMuted mt-2">
-            Describe your idea; the AI pulls out the things in it and asks what
+          <p className="font-body text-[15px] text-inkMuted mt-3 leading-relaxed max-w-lg">
+            Describe your idea. The AI pulls out the things in it and asks what
             it needs about each, then writes one real prompt per platform — no
             wasted credits on the wrong shape, length, or a missing detail.
           </p>
         </header>
 
-        <section className="mb-6">
+        <section className="mb-7">
           <div className="flex gap-2 border-b border-line pb-3">
             {(["image", "video"] as Domain[]).map((d) => (
               <button
@@ -233,7 +239,7 @@ export default function Home() {
                 onClick={() => switchDomain(d)}
                 className={`px-4 py-1.5 font-mono text-xs uppercase tracking-wide border rounded-sm transition-colors ${
                   domain === d
-                    ? "bg-ink text-paperRaised border-ink"
+                    ? "bg-ink text-paperRaised border-ink shadow-card"
                     : "bg-paperRaised text-inkMuted border-line hover:border-ink hover:text-ink"
                 }`}
               >
@@ -250,13 +256,14 @@ export default function Home() {
             </button>
           </div>
           {domain === "video" && (
-            <p className="font-mono text-[10px] text-risk mt-2">
+            <p className="font-mono text-[10px] text-risk mt-2.5 flex items-center gap-1.5">
+              <span className="inline-block w-1 h-1 rounded-full bg-risk" />
               video runs cost real credits — spec tightly
             </p>
           )}
         </section>
 
-        <section className="mb-6">
+        <section className="mb-7">
           {domain === "image" ? (
             <QuestionFlow spec={imageSpec} onChange={setImageSpec} />
           ) : (
@@ -264,11 +271,11 @@ export default function Home() {
           )}
         </section>
 
-        <section className="mb-6">
+        <section className="mb-7">
           <ProviderKeyBar onConfigChange={setProviderConfig} />
         </section>
 
-        <section className="mb-6">
+        <section className="mb-7">
           <QuestionEngine
             domain={domain}
             idea={currentSpec.idea}
@@ -279,16 +286,16 @@ export default function Home() {
           />
         </section>
 
-        <section className="mb-6">
+        <section className="mb-7">
           <CompletenessMeter result={completeness} />
         </section>
 
         {completeness.hasIdea && !completeness.isComplete && !compileAnyway && (
-          <section className="mb-6">
+          <section className="mb-7 animate-fade-in">
             <button
               type="button"
               onClick={() => setCompileAnyway(true)}
-              className="w-full py-2 font-mono text-xs uppercase tracking-wide border border-dashed border-risk text-risk rounded-sm hover:bg-riskSoft transition-colors"
+              className="w-full py-2.5 font-mono text-xs uppercase tracking-wide border border-dashed border-risk text-risk rounded-sm hover:bg-riskSoft transition-colors"
             >
               Compile anyway — accepting {completeness.regenRisks} regen risk
               {completeness.regenRisks === 1 ? "" : "s"}
@@ -297,12 +304,12 @@ export default function Home() {
         )}
 
         {canCompile && (!generated || stale) && (
-          <section className="mb-6">
+          <section className="mb-7">
             <button
               type="button"
               onClick={handleGenerate}
               disabled={composing}
-              className="w-full py-2.5 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
+              className="w-full py-3 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-50 transition-opacity shadow-card flex items-center justify-center gap-2"
             >
               {composing
                 ? "writing your prompts…"
@@ -313,19 +320,21 @@ export default function Home() {
                     : "Generate compiled prompts (add a key + answers for a polished write-up)"}
             </button>
             {genError && (
-              <p className="font-mono text-[11px] text-risk mt-2">{genError}</p>
+              <p className="font-mono text-[11px] text-risk mt-2.5 px-1">
+                {genError}
+              </p>
             )}
           </section>
         )}
 
         {generated && (
-          <section className="mb-6">
+          <section className="mb-7 animate-fade-in">
             <ResultsPanel results={generated.results} onCopy={handleCopy} />
           </section>
         )}
 
         {pending.length > 0 && (
-          <section className="mb-6">
+          <section className="mb-7">
             <OutcomeTracker
               pending={pending}
               onResolve={resolvePending}
@@ -335,13 +344,13 @@ export default function Home() {
         )}
 
         {outcomes.length > 0 && (
-          <section className="mb-6">
+          <section className="mb-7">
             <OutcomeStats outcomes={outcomes} onClear={handleClearLog} />
           </section>
         )}
 
-        <footer className="mt-12 pt-4 border-t border-line">
-          <p className="font-mono text-[11px] text-inkMuted">
+        <footer className="mt-16 pt-5 border-t border-line">
+          <p className="font-mono text-[11px] text-inkFaint leading-relaxed">
             Entity-first AI questions (BYOK) · AI-composed prompts ·
             deterministic platform layer · outcome log (local) · also an MCP
             server (mcp/). See ROADMAP.md.

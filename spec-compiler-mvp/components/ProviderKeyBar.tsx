@@ -110,23 +110,35 @@ export default function ProviderKeyBar({ onConfigChange }: Props) {
       ? "Sent to Anthropic directly — never touches our server."
       : "Sent through this app's proxy to the provider — never stored.";
 
+  // Free-tier hint so a new user knows they can try this without paying.
+  const freeHint: Record<string, string> = {
+    nvidia: "free key available · no card",
+    google: "free tier · ~30 rpm",
+    groq: "free tier · gpt-oss models",
+    openrouter: "free :free model variants exist",
+    anthropic: "paid",
+    openai: "paid",
+    mistral: "limited free experiment tier",
+    custom: "",
+  };
+
   return (
-    <div className="border border-line rounded-sm bg-paperRaised p-4">
-      <div className="flex items-center justify-between mb-2">
+    <div className="border border-line rounded-sm bg-paperRaised p-4 sm:p-5 shadow-card">
+      <div className="flex items-center justify-between mb-3">
         <span className="font-mono text-xs uppercase tracking-wide text-inkMuted flex items-center gap-1.5">
-          <Sparkles size={12} /> AI key
+          <Sparkles size={13} /> AI key
         </span>
-        <span className="font-mono text-[10px] text-inkMuted">
+        <span className="font-mono text-[10px] text-inkFaint">
           bring your own key
         </span>
       </div>
 
-      <label className="block mb-2">
-        <span className="font-mono text-[10px] uppercase text-inkMuted">Provider</span>
+      <label className="block mb-2.5">
+        <span className="font-mono text-[10px] uppercase text-inkFaint">Provider</span>
         <select
           value={providerId}
           onChange={(e) => onProviderChange(e.target.value)}
-          className="mt-1 w-full bg-paper border border-line rounded-sm px-2 py-1.5 text-xs font-mono text-ink focus:outline-none focus:border-ink"
+          className="mt-1 w-full bg-paper border border-line rounded-sm px-2.5 py-2 text-xs font-mono text-ink focus:outline-none focus:border-ink transition-colors"
         >
           {PROVIDER_LIST.map((p) => (
             <option key={p.id} value={p.id}>
@@ -135,6 +147,13 @@ export default function ProviderKeyBar({ onConfigChange }: Props) {
           ))}
         </select>
       </label>
+
+      {freeHint[providerId] && (
+        <p className="font-mono text-[10px] text-safe mb-2.5 flex items-center gap-1">
+          <span className="inline-block w-1 h-1 rounded-full bg-safe" />
+          {freeHint[providerId]}
+        </p>
+      )}
 
       {active ? (
         <div className="flex items-center justify-between">
@@ -160,7 +179,7 @@ export default function ProviderKeyBar({ onConfigChange }: Props) {
               value={draftBaseUrl}
               onChange={(e) => setDraftBaseUrl(e.target.value)}
               placeholder="https://your-endpoint/v1"
-              className="w-full mb-2 bg-paper border border-line rounded-sm px-3 py-1.5 text-xs font-mono text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
+              className="w-full mb-2 bg-paper border border-line rounded-sm px-2.5 py-2 text-xs font-mono text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink transition-colors"
             />
           )}
           {provider.kind === "openai-compat" && (
@@ -168,7 +187,7 @@ export default function ProviderKeyBar({ onConfigChange }: Props) {
               value={draftModel}
               onChange={(e) => setDraftModel(e.target.value)}
               placeholder="model id, e.g. gpt-4o-mini"
-              className="w-full mb-2 bg-paper border border-line rounded-sm px-3 py-1.5 text-xs font-mono text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
+              className="w-full mb-2 bg-paper border border-line rounded-sm px-2.5 py-2 text-xs font-mono text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink transition-colors"
             />
           )}
           <div className="flex gap-2">
@@ -178,18 +197,18 @@ export default function ProviderKeyBar({ onConfigChange }: Props) {
               onChange={(e) => setDraftKey(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && save()}
               placeholder={provider.keyHint}
-              className="flex-1 bg-paper border border-line rounded-sm px-3 py-1.5 text-xs font-mono text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
+              className="flex-1 bg-paper border border-line rounded-sm px-2.5 py-2 text-xs font-mono text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink transition-colors"
             />
             <button
               type="button"
               onClick={save}
               disabled={!draftKey.trim()}
-              className="px-3 py-1.5 font-mono text-xs uppercase border border-line rounded-sm text-ink hover:border-ink disabled:opacity-40 transition-colors"
+              className="px-3.5 py-2 font-mono text-xs uppercase border border-line rounded-sm text-ink hover:border-ink hover:bg-paperRaised disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               Save
             </button>
           </div>
-          <p className="font-mono text-[10px] text-inkMuted mt-1.5">
+          <p className="font-mono text-[10px] text-inkFaint mt-2.5 leading-relaxed">
             {keyRoute}
             {provider.keysUrl && (
               <>

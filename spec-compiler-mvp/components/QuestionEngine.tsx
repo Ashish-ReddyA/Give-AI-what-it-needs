@@ -78,24 +78,26 @@ function QuestionItem({
   };
 
   return (
-    <div className="border-t border-dashed border-line pt-3">
-      <p className="font-body text-sm text-ink mb-2">
+    <div className="border-t border-dashed border-lineSoft pt-3 first:border-t-0 first:pt-0">
+      <p className="font-body text-sm text-ink mb-2.5 leading-snug">
         {q.question}
         {q.multi && (
-          <span className="font-mono text-[10px] text-inkMuted"> · pick any</span>
+          <span className="font-mono text-[10px] text-inkFaint ml-1.5">
+            · pick any
+          </span>
         )}
       </p>
       {q.options.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className="flex flex-wrap gap-1.5 mb-2.5">
           {q.options.map((opt) => (
             <button
               key={opt}
               type="button"
               onClick={() => toggleChip(opt)}
-              className={`px-2.5 py-1 font-mono text-[11px] border rounded-sm transition-colors ${
+              className={`px-2.5 py-1 font-mono text-[11px] border rounded-sm transition-all ${
                 has(opt)
-                  ? "bg-ink text-paperRaised border-ink"
-                  : "bg-paperRaised text-ink border-line hover:border-ink"
+                  ? "bg-ink text-paperRaised border-ink shadow-inset"
+                  : "bg-paperRaised text-ink border-line hover:border-ink hover:-translate-y-px"
               }`}
             >
               {opt}
@@ -113,7 +115,7 @@ function QuestionItem({
               ? "or type your own…"
               : "type your answer…"
         }
-        className="w-full bg-paper border-b border-line px-1 py-1 text-xs font-body text-ink placeholder:text-inkMuted focus:outline-none focus:border-ink"
+        className="w-full bg-paper border-b border-line px-1 py-1 text-xs font-body text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink transition-colors"
       />
     </div>
   );
@@ -229,49 +231,60 @@ export default function QuestionEngine({
   const count = answeredCount(qa);
 
   return (
-    <div className="border border-line rounded-sm bg-paperRaised p-4">
-      <div className="flex items-center justify-between mb-2">
+    <div className="border border-line rounded-sm bg-paperRaised p-4 sm:p-5 shadow-card">
+      <div className="flex items-center justify-between mb-3">
         <span className="font-mono text-xs uppercase tracking-wide text-inkMuted flex items-center gap-1.5">
-          <Sparkles size={12} /> AI questions
+          <Sparkles size={13} /> AI questions
         </span>
         {count > 0 && (
-          <span className="font-mono text-[10px] text-safe">
+          <span className="font-mono text-[10px] text-safe bg-safeSoft px-2 py-0.5 rounded-sm">
             {count} detail{count === 1 ? "" : "s"} added
           </span>
         )}
       </div>
 
       {!config ? (
-        <p className="font-body text-xs text-inkMuted">
-          Add a provider key above and the AI will pull the things out of your
-          idea — each subject, object, and the setting — and ask what it needs
-          about each.
-        </p>
+        <div className="py-2">
+          <p className="font-body text-sm text-inkMuted leading-relaxed">
+            Add a provider key above and the AI will pull the things out of your
+            idea — each subject, object, and the setting — and ask what it needs
+            about each.
+          </p>
+          <p className="font-mono text-[10px] text-inkFaint mt-3 leading-relaxed">
+            Questions stay grounded in your idea: if you didn&apos;t mention a
+            subject, the AI won&apos;t invent one.
+          </p>
+        </div>
       ) : qa.entities.length === 0 ? (
         <>
           <button
             type="button"
             onClick={extract}
             disabled={!ready || busyEntities}
-            className="w-full py-2 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+            className="w-full py-2.5 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
           >
             {busyEntities ? (
               <>
-                <Loader2 size={12} className="animate-spin" /> reading your idea…
+                <Loader2 size={13} className="animate-spin" /> reading your idea…
               </>
             ) : (
               <>Break down my idea</>
             )}
           </button>
-          {!hasIdea && (
-            <p className="font-mono text-[10px] text-inkMuted mt-1.5">
+          {!hasIdea ? (
+            <p className="font-mono text-[10px] text-inkFaint mt-2.5">
               type an idea first — the AI pulls the things out of it
+            </p>
+          ) : (
+            <p className="font-mono text-[10px] text-inkFaint mt-2.5">
+              the AI extracts each subject, object, and the setting from your
+              idea, then asks only about those
             </p>
           )}
         </>
       ) : (
         <>
-          <p className="font-mono text-[10px] uppercase text-inkMuted mb-2">
+          <p className="font-mono text-[10px] uppercase text-inkFaint mb-3 tracking-wide">
             The things in your idea — open each to refine it
           </p>
           <div className="space-y-2">
@@ -283,27 +296,32 @@ export default function QuestionEngine({
                 (qa.answers[q.id] ?? "").trim()
               ).length;
               return (
-                <div key={entity.id} className="border border-line rounded-sm bg-paper">
+                <div
+                  key={entity.id}
+                  className="border border-line rounded-sm bg-paper overflow-hidden transition-colors hover:border-inkMuted"
+                >
                   <button
                     type="button"
                     onClick={() => openEntity(entity)}
-                    className="w-full flex items-center justify-between px-3 py-2 font-mono text-xs text-ink hover:bg-paperRaised transition-colors"
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 font-mono text-xs text-ink hover:bg-paperRaised transition-colors"
                   >
                     <span className="flex items-center gap-1.5">
                       {isOpen ? (
-                        <ChevronDown size={12} />
+                        <ChevronDown size={13} />
                       ) : (
-                        <ChevronRight size={12} />
+                        <ChevronRight size={13} />
                       )}
                       {entity.label}
                       {answeredHere > 0 && (
-                        <span className="text-safe">· {answeredHere}</span>
+                        <span className="text-safe text-[10px] bg-safeSoft px-1.5 py-0.5 rounded-sm">
+                          {answeredHere}
+                        </span>
                       )}
                     </span>
-                    {isLoading && <Loader2 size={12} className="animate-spin" />}
+                    {isLoading && <Loader2 size={13} className="animate-spin" />}
                   </button>
                   {isOpen && !isLoading && qs.length > 0 && (
-                    <div className="px-3 pb-3 space-y-3">
+                    <div className="px-3.5 pb-3.5 space-y-3 border-t border-lineSoft pt-3 animate-fade-in">
                       {qs.map((q) => (
                         <QuestionItem
                           key={q.id}
@@ -315,7 +333,7 @@ export default function QuestionEngine({
                     </div>
                   )}
                   {isOpen && !isLoading && qs.length === 0 && (
-                    <p className="px-3 pb-3 font-mono text-[10px] text-inkMuted">
+                    <p className="px-3.5 pb-3.5 pt-3 border-t border-lineSoft font-mono text-[10px] text-inkFaint">
                       no questions came back — try another part
                     </p>
                   )}
@@ -327,14 +345,18 @@ export default function QuestionEngine({
             type="button"
             onClick={extract}
             disabled={busyEntities}
-            className="mt-2 font-mono text-[10px] text-inkMuted hover:text-ink transition-colors disabled:opacity-40"
+            className="mt-3 font-mono text-[10px] text-inkFaint hover:text-ink transition-colors disabled:opacity-40 flex items-center gap-1"
           >
             {busyEntities ? "re-reading…" : "↻ re-extract (after editing the idea)"}
           </button>
         </>
       )}
 
-      {error && <p className="font-mono text-[11px] text-risk mt-2">{error}</p>}
+      {error && (
+        <p className="font-mono text-[11px] text-risk mt-3 bg-riskSoft rounded-sm py-1.5 px-2.5">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

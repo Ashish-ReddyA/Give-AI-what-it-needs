@@ -246,6 +246,112 @@ describe("generateEntityQuestions", () => {
   });
 });
 
+describe("grounding — the cafe-at-sunrise bug", () => {
+  // The exact failure the user reported: "a sunrise in a cafe" produced
+  // "is it a cat or a dog?" questions even though no animal was ever
+  // mentioned. The prompt rewrites are the primary fix; this test locks down
+  // the deterministic backstop that drops stock-animal options when the idea
+  // contains no animal. It also asserts the grounding rail text is present in
+  // the system prompt so the model is told not to invent subjects.
+  function okCapture(response: unknown): typeof fetch {
+    return async () =>
+      new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+  }
+
+  it("system prompt forbids inventing subjects the idea does not mention", async () => {
+    const captured: Captured[] = [];
+    await generateEntityQuestions(
+      "image",
+      "a quiet cafe at sunrise",
+      { id: "scene", label: "Scene" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: capture(
+          { text: JSON.stringify({ questions: [] }) },
+          captured
+        ),
+      }
+    );
+    const system = String(captured[0].body.system);
+    expect(system).toMatch(/never introduce a new subject/i);
+    expect(system).toMatch(/idea.*is the only source of truth/i);
+  });
+
+  it("drops stock-animal options when the idea mentions no animal", async () => {
+    // A weak model hallucinates animal options for a cafe-sunrise Scene.
+    const questions = await generateEntityQuestions(
+      "image",
+      "a quiet cafe at sunrise",
+      { id: "scene", label: "Scene" },
+      {},
+      [],
+      {
+        providerId: "nvidia",
+        apiKey: "nv",
+        model: "meta/llama-3.1-8b-instruct",
+        fetch: okCapture({
+          text: JSON.stringify({
+            questions: [
+              {
+                id: "subject",
+                question: "Is there a cat or a dog in the scene?",
+                options: ["a cat", "a dog", "warm sunrise light", "soft steam"],
+                multi: true,
+              },
+            ],
+          }),
+        }),
+      }
+    );
+    // The animal cliches the user hit must be gone; the idea-relevant options
+    // (sunrise light, steam) survive.
+    expect(questions[0].options).not.toContain("a cat");
+    expect(questions[0].options).not.toContain("a dog");
+    expect(questions[0].options).toEqual(["warm sunrise light", "soft steam"]);
+  });
+
+  it("keeps animal options when the idea actually mentions that animal", async () => {
+    // The filter must not over-fire: if the idea really is about a cat, the
+    // cat option is legitimate and must be kept.
+    const questions = await generateEntityQuestions(
+      "image",
+      "a cat sitting in a sunlit cafe",
+      { id: "cat", label: "Cat" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: okCapture({
+          text: JSON.stringify({
+            questions: [
+              {
+                id: "fur",
+                question: "What kind of cat?",
+                options: ["orange tabby cat", "black cat", "a ceramic cup"],
+                multi: true,
+              },
+            ],
+          }),
+        }),
+      }
+    );
+    expect(questions[0].options).toEqual([
+      "orange tabby cat",
+      "black cat",
+      "a ceramic cup",
+    ]);
+  });
+});
+
 describe("composeScene", () => {
   it("returns the AI-written prose prompt (proxy path)", async () => {
     const captured: Captured[] = [];

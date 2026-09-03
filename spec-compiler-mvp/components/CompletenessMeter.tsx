@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckCircle2, CircleAlert } from "lucide-react";
 import { CompletenessResult } from "@/lib/completeness";
 
 interface Props {
@@ -8,59 +9,52 @@ interface Props {
 
 export default function CompletenessMeter({ result }: Props) {
   const { score, regenRisks, missing } = result;
-  const isSafe = regenRisks === 0;
+  const ready = regenRisks === 0;
 
   return (
-    <div className="border border-line rounded-sm bg-paperRaised p-4 sm:p-5 shadow-card">
-      <div className="flex items-center justify-between mb-3">
-        <span className="font-mono text-xs uppercase tracking-wide text-inkMuted">
-          Completeness
+    <div>
+      <div className="flex items-start gap-3">
+        <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${ready ? "bg-successSoft text-success" : "bg-warningSoft text-warning"}`}>
+          {ready ? <CheckCircle2 size={19} /> : <CircleAlert size={19} />}
         </span>
-        <span
-          className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-sm ${
-            isSafe ? "bg-safeSoft text-safe" : "bg-riskSoft text-risk"
-          }`}
-        >
-          {isSafe ? "REGEN RISKS: 0" : `REGEN RISKS: ${regenRisks}`}
-        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-textPrimary">
+              {ready ? "Ready to compile" : `${missing.length} required detail${missing.length === 1 ? "" : "s"} missing`}
+            </h2>
+            <span className="text-sm font-semibold text-textPrimary">{score}%</span>
+          </div>
+          <p className="mt-1 text-sm leading-5 text-textSecondary">
+            {ready
+              ? "The core specification is complete."
+              : "Complete these fields to reduce the chance of an unusable generation."}
+          </p>
+        </div>
       </div>
 
-      <div className="h-2 w-full bg-line rounded-full overflow-hidden mb-3.5">
+      <div
+        role="progressbar"
+        aria-label="Specification completeness"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={score}
+        className="mt-4 h-2 overflow-hidden rounded-full bg-borderUi"
+      >
         <div
-          className={`h-full transition-all duration-500 rounded-full ${
-            isSafe ? "bg-safe" : "bg-ink"
-          }`}
+          className={`h-full rounded-full transition-all duration-500 ${ready ? "bg-success" : "bg-primary"}`}
           style={{ width: `${score}%` }}
         />
       </div>
 
-      {missing.length > 0 ? (
-        <>
-          <ul className="space-y-1.5 mb-2.5">
-            {missing.map((field) => (
-              <li
-                key={field.key}
-                className="font-mono text-xs text-inkMuted flex gap-2 leading-relaxed"
-              >
-                <span className="text-risk mt-px">·</span>
-                <span>
-                  <span className="text-ink">{field.label}</span> — prevents{" "}
-                  {field.prevents}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {/* Honest math: this is a count of unpinned fields, not a literal
-              credit tally — say so instead of dressing it up. */}
-          <p className="font-mono text-[10px] text-inkFaint">
-            Each unpinned field above is a common cause of a throwaway run.
-          </p>
-        </>
-      ) : (
-        <p className="font-mono text-xs text-safe flex items-center gap-1.5">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-safe" />
-          All required fields answered. Nothing here should waste a generation.
-        </p>
+      {missing.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {missing.map((field) => (
+            <li key={field.key} className="rounded-lg bg-surfaceSubtle px-3 py-2.5 text-sm text-textSecondary">
+              <span className="font-medium text-textPrimary">{field.label}</span>
+              <span className="block text-xs leading-5 text-textMuted">Helps prevent {field.prevents}.</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

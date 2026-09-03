@@ -78,44 +78,41 @@ function QuestionItem({
   };
 
   return (
-    <div className="border-t border-dashed border-lineSoft pt-3 first:border-t-0 first:pt-0">
-      <p className="font-body text-sm text-ink mb-2.5 leading-snug">
-        {q.question}
+    <div className="rounded-lg border border-borderUi bg-surface p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm font-medium leading-6 text-textPrimary">{q.question}</p>
         {q.multi && (
-          <span className="font-mono text-[10px] text-inkFaint ml-1.5">
-            · pick any
+          <span className="rounded-full bg-primarySoft px-2 py-0.5 text-xs font-medium text-primary">
+            Select any
           </span>
         )}
-      </p>
+      </div>
       {q.options.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2.5">
-          {q.options.map((opt) => (
+        <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label={q.question}>
+          {q.options.map((option) => (
             <button
-              key={opt}
+              key={option}
               type="button"
-              onClick={() => toggleChip(opt)}
-              className={`px-2.5 py-1 font-mono text-[11px] border rounded-sm transition-all ${
-                has(opt)
-                  ? "bg-ink text-paperRaised border-ink shadow-inset"
-                  : "bg-paperRaised text-ink border-line hover:border-ink hover:-translate-y-px"
+              aria-pressed={has(option)}
+              onClick={() => toggleChip(option)}
+              className={`min-h-10 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                has(option)
+                  ? "border-primary bg-primarySoft text-primary"
+                  : "border-borderUi bg-surface text-textSecondary hover:border-borderStrong hover:bg-surfaceSubtle"
               }`}
             >
-              {opt}
+              {option}
             </button>
           ))}
         </div>
       )}
+      <label htmlFor={`answer-${q.id}`} className="sr-only">Custom answer for {q.question}</label>
       <input
+        id={`answer-${q.id}`}
         value={customValue}
-        onChange={(e) => onCustom(e.target.value)}
-        placeholder={
-          q.multi
-            ? "add your own (comma-separated)…"
-            : q.options.length
-              ? "or type your own…"
-              : "type your answer…"
-        }
-        className="w-full bg-paper border-b border-line px-1 py-1 text-xs font-body text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink transition-colors"
+        onChange={(event) => onCustom(event.target.value)}
+        placeholder={q.multi ? "Add another answer, separated by commas" : "Type a custom answer"}
+        className="min-h-10 w-full rounded-lg border border-borderUi bg-surfaceSubtle px-3 py-2 text-sm text-textPrimary placeholder:text-textMuted focus:border-primary focus:bg-surface focus:outline-none focus:ring-4 focus:ring-primary/10"
       />
     </div>
   );
@@ -279,28 +276,29 @@ export default function QuestionEngine({
   const count = answeredCount(qa);
 
   return (
-    <div className="border border-line rounded-sm bg-paperRaised p-4 sm:p-5 shadow-card">
-      <div className="flex items-center justify-between mb-3">
-        <span className="font-mono text-xs uppercase tracking-wide text-inkMuted flex items-center gap-1.5">
-          <Sparkles size={13} /> AI questions
-        </span>
+    <section className="rounded-xl border border-borderUi bg-surface p-5 shadow-card sm:p-6" aria-labelledby="ai-refinement-title">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-primary">
+            <Sparkles size={18} />
+            <h2 id="ai-refinement-title" className="text-lg font-semibold text-textPrimary">AI refinement</h2>
+          </div>
+          <p className="mt-1 text-sm leading-6 text-textSecondary">
+            Analyze the brief, then refine each subject, object, and setting with detailed questions.
+          </p>
+        </div>
         {count > 0 && (
-          <span className="font-mono text-[10px] text-safe bg-safeSoft px-2 py-0.5 rounded-sm">
-            {count} detail{count === 1 ? "" : "s"} added
+          <span className="shrink-0 rounded-full bg-successSoft px-2.5 py-1 text-xs font-semibold text-success">
+            {count} answered
           </span>
         )}
       </div>
 
       {!config ? (
-        <div className="py-2">
-          <p className="font-body text-sm text-inkMuted leading-relaxed">
-            Add a provider key above and the AI will pull the things out of your
-            idea — each subject, object, and the setting — and ask what it needs
-            about each.
-          </p>
-          <p className="font-mono text-[10px] text-inkFaint mt-3 leading-relaxed">
-            Questions stay grounded in your idea: if you didn&apos;t mention a
-            subject, the AI won&apos;t invent one.
+        <div className="rounded-lg border border-borderUi bg-surfaceSubtle p-4">
+          <p className="text-sm font-medium text-textPrimary">Connect an AI provider to analyze this brief.</p>
+          <p className="mt-1 text-sm leading-6 text-textSecondary">
+            The engine stays grounded in your idea and guarantees required detail with local question blueprints.
           </p>
         </div>
       ) : qa.entities.length === 0 ? (
@@ -309,7 +307,7 @@ export default function QuestionEngine({
             type="button"
             onClick={extract}
             disabled={!ready || busyEntities}
-            className="w-full py-2.5 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primaryHover disabled:cursor-not-allowed disabled:opacity-45"
           >
             {busyEntities ? (
               <>
@@ -320,21 +318,21 @@ export default function QuestionEngine({
             )}
           </button>
           {!hasIdea ? (
-            <p className="font-mono text-[10px] text-inkFaint mt-2.5">
-              type an idea first — the AI pulls the things out of it
+            <p className="mt-2 text-sm text-textMuted">
+              Add a brief first, then analyze it.
             </p>
           ) : (
-            <p className="font-mono text-[10px] text-inkFaint mt-2.5">
-              the AI extracts each subject, object, and the setting from your
-              idea, then asks only about those
+            <p className="mt-2 text-sm text-textMuted">
+              Uses one provider request to identify the subjects, objects, and setting.
             </p>
           )}
         </>
       ) : (
         <>
-          <p className="font-mono text-[10px] uppercase text-inkFaint mb-3 tracking-wide">
-            The things in your idea — open each to refine it
-          </p>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-textPrimary">Refinement areas</p>
+            <p className="text-xs text-textMuted">Open each area to answer or skip details</p>
+          </div>
           <div className="space-y-2">
             {qa.entities.map((entity) => {
               const isOpen = open.has(entity.id);
@@ -346,12 +344,14 @@ export default function QuestionEngine({
               return (
                 <div
                   key={entity.id}
-                  className="border border-line rounded-sm bg-paper overflow-hidden transition-colors hover:border-inkMuted"
+                  className="overflow-hidden rounded-lg border border-borderUi bg-surface transition-colors hover:border-borderStrong"
                 >
                   <button
                     type="button"
                     onClick={() => openEntity(entity)}
-                    className="w-full flex items-center justify-between px-3.5 py-2.5 font-mono text-xs text-ink hover:bg-paperRaised transition-colors"
+                    aria-expanded={isOpen}
+                    aria-controls={`entity-panel-${entity.id}`}
+                    className="flex min-h-12 w-full items-center justify-between px-4 py-3 text-sm font-semibold text-textPrimary hover:bg-surfaceSubtle"
                   >
                     <span className="flex items-center gap-1.5">
                       {isOpen ? (
@@ -369,7 +369,7 @@ export default function QuestionEngine({
                     {isLoading && <Loader2 size={13} className="animate-spin" />}
                   </button>
                   {isOpen && !isLoading && qs.length > 0 && (
-                    <div className="px-3.5 pb-3.5 space-y-3 border-t border-lineSoft pt-3 animate-fade-in">
+                    <div id={`entity-panel-${entity.id}`} className="space-y-3 border-t border-borderUi bg-surfaceSubtle p-4 animate-fade-in">
                       {qs.map((q) => (
                         <QuestionItem
                           key={q.id}
@@ -382,23 +382,23 @@ export default function QuestionEngine({
                         type="button"
                         onClick={() => deepenEntity(entity)}
                         disabled={deepening.has(entity.id) || deepened.has(entity.id)}
-                        className="w-full mt-1 py-1.5 font-mono text-[10px] uppercase tracking-wide text-inkMuted border border-dashed border-line rounded-sm hover:border-ink hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+                        className="mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-borderUi bg-surface px-4 text-sm font-semibold text-textSecondary hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {deepening.has(entity.id) ? (
                           <>
-                            <Loader2 size={11} className="animate-spin" /> digging deeper…
+                            <Loader2 size={16} className="animate-spin" /> Generating advanced questions...
                           </>
                         ) : deepened.has(entity.id) ? (
-                          <>deep detail added</>
+                          <>Advanced questions added</>
                         ) : (
-                          <>+ more detail</>
+                          <>Generate advanced questions</>
                         )}
                       </button>
                     </div>
                   )}
                   {isOpen && !isLoading && qs.length === 0 && (
-                    <p className="px-3.5 pb-3.5 pt-3 border-t border-lineSoft font-mono text-[10px] text-inkFaint">
-                      no questions came back — try another part
+                    <p id={`entity-panel-${entity.id}`} className="border-t border-borderUi bg-surfaceSubtle p-4 text-sm text-textMuted">
+                      No questions were returned for this area.
                     </p>
                   )}
                 </div>
@@ -409,18 +409,18 @@ export default function QuestionEngine({
             type="button"
             onClick={extract}
             disabled={busyEntities}
-            className="mt-3 font-mono text-[10px] text-inkFaint hover:text-ink transition-colors disabled:opacity-40 flex items-center gap-1"
+            className="mt-4 min-h-10 rounded-lg px-3 text-sm font-medium text-textSecondary hover:bg-surfaceSubtle hover:text-primary disabled:opacity-40"
           >
-            {busyEntities ? "re-reading…" : "↻ re-extract (after editing the idea)"}
+            {busyEntities ? "Analyzing updated brief..." : "Re-analyze after editing the brief"}
           </button>
         </>
       )}
 
       {error && (
-        <p className="font-mono text-[11px] text-risk mt-3 bg-riskSoft rounded-sm py-1.5 px-2.5">
+        <p role="alert" className="mt-4 rounded-lg border border-danger/20 bg-dangerSoft px-3.5 py-3 text-sm text-danger">
           {error}
         </p>
       )}
-    </div>
+    </section>
   );
 }

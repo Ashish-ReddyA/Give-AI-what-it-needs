@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, JetBrains_Mono, Inter } from "next/font/google";
+import { JetBrains_Mono, Inter } from "next/font/google";
 import "./globals.css";
-
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["500", "700"],
-});
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -34,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${display.variable} ${mono.variable} ${body.variable} font-body`}
+        className={`${mono.variable} ${body.variable} font-body`}
       >
         {children}
       </body>

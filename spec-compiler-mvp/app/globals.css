@@ -2,89 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #f4f7fb;
+  scroll-behavior: smooth;
+}
+
 body {
-  background-color: #EFEDE4;
-  color: #1C1B17;
+  margin: 0;
+  background: #f4f7fb;
+  color: #0f172a;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Subtle paper grain so the warm canvas reads as material, not a flat fill */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.5;
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(28, 27, 23, 0.025) 1px,
-    transparent 0
-  );
-  background-size: 22px 22px;
+::selection {
+  background: #dbeafe;
+  color: #0f172a;
 }
 
-main {
-  position: relative;
-  z-index: 1;
-}
-
-/* Dashed "perforated tear" edge used on receipt cards */
-.perforated-top {
-  position: relative;
-}
-.perforated-top::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background-image: repeating-linear-gradient(
-    90deg,
-    #d8d3c4,
-    #d8d3c4 6px,
-    transparent 6px,
-    transparent 10px
-  );
-}
-
-/* Small notches on either side of a receipt card, like torn paper */
-.receipt-card {
-  clip-path: polygon(
-    0% 4px, 4px 0%, calc(100% - 4px) 0%, 100% 4px,
-    100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0% calc(100% - 4px)
-  );
-}
-
-/* Focus ring tuned for the paper palette */
 *:focus-visible {
-  outline: 2px solid #1C1B17;
+  outline: 3px solid rgba(37, 99, 235, 0.35);
   outline-offset: 2px;
-  border-radius: 1px;
 }
 
-/* Custom scrollbar for the receipt feel */
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+textarea {
+  field-sizing: content;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #EFEDE4;
+  background: #f8fafc;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #D8D3C4;
-  border-radius: 5px;
-  border: 2px solid #EFEDE4;
+  background: #cbd5e1;
+  border: 2px solid #f8fafc;
+  border-radius: 999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #8A8674;
+  background: #94a3b8;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transform: none !important;
   }
 }

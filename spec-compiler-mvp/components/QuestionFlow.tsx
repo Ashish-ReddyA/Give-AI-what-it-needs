@@ -19,76 +19,104 @@ export default function QuestionFlow({ spec, onChange }: Props) {
     onChange({ ...spec, [key]: value });
 
   return (
-    <div className="space-y-6">
-      <div>
-        <FieldLabel number="00">Base idea</FieldLabel>
+    <div className="space-y-5">
+      <section className="rounded-xl border border-borderUi bg-surface p-5 shadow-card sm:p-6">
+        <div className="mb-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Brief</p>
+          <h2 className="mt-1 text-lg font-semibold text-textPrimary">What do you want to create?</h2>
+          <p className="mt-1 text-sm text-textSecondary">
+            Describe the subject, setting, and moment. You can refine every detail after analysis.
+          </p>
+        </div>
+        <label htmlFor="image-idea" className="sr-only">Image idea</label>
         <textarea
+          id="image-idea"
           value={spec.idea}
           onChange={(e) => set("idea", e.target.value)}
-          placeholder="e.g. a quiet cafe at sunrise, steam rising from a latte"
-          rows={3}
-          className="w-full bg-paperRaised border border-line rounded-sm px-3 py-2.5 text-sm font-body text-ink placeholder:text-inkFaint focus:outline-none focus:border-ink resize-none transition-colors leading-relaxed"
+          placeholder="A quiet cafe at sunrise, steam rising from a latte near the window..."
+          rows={5}
+          className="min-h-36 w-full resize-y rounded-xl border border-borderUi bg-surfaceSubtle px-4 py-3.5 text-base leading-7 text-textPrimary placeholder:text-textMuted focus:border-primary focus:bg-surface focus:outline-none focus:ring-4 focus:ring-primary/10"
         />
-      </div>
+      </section>
 
-      <div>
-        <FieldLabel number="01">Format</FieldLabel>
-        <div className="grid grid-cols-3 gap-2 mb-2">
-          {(Object.keys(FORMAT_LABELS) as AspectFormat[]).map((f) => (
-            <ChoiceButton
-              key={f}
-              active={spec.format === f}
-              onClick={() => set("format", f)}
-            >
-              {FORMAT_LABELS[f]}
-            </ChoiceButton>
-          ))}
+      <section className="rounded-xl border border-borderUi bg-surface p-5 shadow-card sm:p-6">
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold text-textPrimary">Core settings</h2>
+          <p className="mt-1 text-sm text-textSecondary">Set the output shape and the details that cannot be wrong.</p>
         </div>
-        <input
-          value={spec.formatUse}
-          onChange={(e) => set("formatUse", e.target.value)}
-          placeholder="what's it for? e.g. Instagram post (optional)"
-          className="w-full bg-transparent border-b border-line px-1 py-1 text-xs font-mono text-inkMuted placeholder:text-inkMuted focus:outline-none focus:border-ink"
-        />
-      </div>
 
-      <div>
-        <FieldLabel number="02">Style</FieldLabel>
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(STYLE_LABELS) as ImageStyle[]).map((s) => (
-            <ChoiceButton
-              key={s}
-              active={spec.style === s}
-              onClick={() => set("style", s)}
-            >
-              {STYLE_LABELS[s]}
-            </ChoiceButton>
-          ))}
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <FieldLabel>Aspect ratio</FieldLabel>
+            <div role="group" aria-label="Aspect ratio" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {(Object.keys(FORMAT_LABELS) as AspectFormat[]).map((format) => (
+                <ChoiceButton
+                  key={format}
+                  active={spec.format === format}
+                  onClick={() => set("format", format)}
+                >
+                  {FORMAT_LABELS[format]}
+                </ChoiceButton>
+              ))}
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <FieldLabel>Visual style</FieldLabel>
+            <div role="group" aria-label="Visual style" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {(Object.keys(STYLE_LABELS) as ImageStyle[]).map((style) => (
+                <ChoiceButton
+                  key={style}
+                  active={spec.style === style}
+                  onClick={() => set("style", style)}
+                >
+                  {STYLE_LABELS[style]}
+                </ChoiceButton>
+              ))}
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <FieldLabel htmlFor="image-non-negotiable">Must-have detail</FieldLabel>
+            <p id="image-non-negotiable-help" className="mb-2 text-sm text-textSecondary">
+              The one detail that would make the generation unusable if it were wrong.
+            </p>
+            <TextField
+              id="image-non-negotiable"
+              label="Must-have image detail"
+              value={spec.nonNegotiable}
+              onChange={(value) => set("nonNegotiable", value)}
+              placeholder="For example: the cat must be an orange tabby"
+            />
+          </div>
         </div>
-      </div>
 
-      <div>
-        <FieldLabel number="03">Non-negotiable detail</FieldLabel>
-        <p className="text-xs text-inkMuted mb-2 font-body">
-          The one thing that ruins this if it&apos;s missing or wrong.
-        </p>
-        <TextField
-          value={spec.nonNegotiable}
-          onChange={(v) => set("nonNegotiable", v)}
-          placeholder="e.g. must be an orange tabby cat"
-        />
-      </div>
-
-      <div>
-        <FieldLabel number="04" optional>
-          Exclusions
-        </FieldLabel>
-        <TextField
-          value={spec.exclusions}
-          onChange={(v) => set("exclusions", v)}
-          placeholder="comma-separated, e.g. text, watermark"
-        />
-      </div>
+        <details className="mt-6 border-t border-borderUi pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-textPrimary">Advanced details</summary>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
+            <div>
+              <FieldLabel htmlFor="image-use" optional>Intended use</FieldLabel>
+              <TextField
+                id="image-use"
+                label="Intended image use"
+                value={spec.formatUse}
+                onChange={(value) => set("formatUse", value)}
+                placeholder="Instagram post, product hero, print..."
+              />
+            </div>
+            <div>
+              <FieldLabel htmlFor="image-exclusions" optional>Exclude</FieldLabel>
+              <TextField
+                id="image-exclusions"
+                label="Image exclusions"
+                value={spec.exclusions}
+                onChange={(value) => set("exclusions", value)}
+                placeholder="Text, watermark, extra limbs..."
+              />
+            </div>
+          </div>
+        </details>
+      </section>
     </div>
   );
 }

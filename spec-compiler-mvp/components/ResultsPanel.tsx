@@ -1,78 +1,74 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { CompiledPrompt } from "@/lib/types";
 
-function ReceiptCard({
+function PromptCard({
   result,
   onCopied,
 }: {
   result: CompiledPrompt;
   onCopied?: (platform: string) => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(result.prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-      // A successful copy is the "about to spend credits" moment — this is
-      // what starts an outcome-tracking entry.
+      setCopyState("copied");
       onCopied?.(result.platform);
+      setTimeout(() => setCopyState("idle"), 1800);
     } catch {
-      // clipboard access can fail in some environments — fail silently,
-      // the text is still selectable/visible.
+      setCopyState("error");
     }
   };
 
   return (
-    <div className="receipt-card perforated-top bg-paperRaised border border-line shadow-cardLg">
-      <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-dashed border-line">
-        <span className="font-mono text-xs font-bold uppercase tracking-wide text-ink">
-          {result.platform}
-        </span>
+    <article className="overflow-hidden rounded-xl border border-borderUi bg-surface shadow-card">
+      <header className="flex items-center justify-between gap-4 border-b border-borderUi px-5 py-4">
+        <div>
+          <h3 className="text-base font-semibold text-textPrimary">{result.platform}</h3>
+          <p className="mt-0.5 text-xs text-textMuted">Platform-ready prompt</p>
+        </div>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1 text-xs font-mono text-inkMuted hover:text-ink transition-colors px-1.5 py-0.5 rounded-sm hover:bg-paper"
+          className="flex min-h-10 items-center gap-2 rounded-lg bg-primary px-3.5 text-sm font-semibold text-white hover:bg-primaryHover"
         >
-          {copied ? (
-            <>
-              <Check size={12} /> copied
-            </>
-          ) : (
-            <>
-              <Copy size={12} /> copy
-            </>
-          )}
+          {copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}
+          {copyState === "copied" ? "Copied" : "Copy prompt"}
         </button>
-      </div>
+      </header>
 
-      <div className="px-4 py-3.5">
-        <p className="font-mono text-sm text-ink leading-relaxed whitespace-pre-wrap break-words">
-          {result.prompt}
-        </p>
+      <div className="p-5">
+        <div className="rounded-lg border border-borderUi bg-surfaceSubtle p-4">
+          <p className="select-text whitespace-pre-wrap break-words font-mono text-sm leading-7 text-textPrimary">
+            {result.prompt}
+          </p>
+        </div>
 
         {result.meta && (
-          <div className="mt-3.5 pt-3 border-t border-dashed border-line space-y-1.5">
-            {Object.entries(result.meta).map(([k, v]) => (
-              <div key={k} className="flex justify-between font-mono text-xs">
-                <span className="text-inkFaint uppercase">{k}</span>
-                <span className="text-ink">{v}</span>
+          <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+            {Object.entries(result.meta).map(([key, value]) => (
+              <div key={key} className="rounded-lg bg-surfaceSubtle px-3 py-2.5">
+                <dt className="text-xs font-medium uppercase tracking-wide text-textMuted">{key}</dt>
+                <dd className="mt-0.5 break-words text-sm font-medium text-textPrimary">{value}</dd>
               </div>
             ))}
-          </div>
+          </dl>
         )}
-      </div>
 
-      <div className="px-4 pb-3.5">
-        <p className="font-mono text-[11px] text-inkFaint italic leading-relaxed">
-          {result.note}
+        <details className="mt-4 border-t border-borderUi pt-3">
+          <summary className="cursor-pointer text-sm font-medium text-textSecondary">Why these settings?</summary>
+          <p className="mt-2 text-sm leading-6 text-textSecondary">{result.note}</p>
+        </details>
+
+        <p aria-live="polite" className={`mt-3 text-sm ${copyState === "error" ? "text-danger" : "text-success"}`}>
+          {copyState === "error" ? "Clipboard access failed. Select the prompt text and copy it manually." : copyState === "copied" ? "Prompt copied to clipboard." : ""}
         </p>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -84,21 +80,21 @@ export default function ResultsPanel({
   onCopy?: (platform: string) => void;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-xs uppercase tracking-wide text-ink">
-          Compiled prompts
-        </span>
-        <span className="h-px flex-1 bg-line" />
-        <span className="font-mono text-[10px] text-inkFaint">
-          one per platform · copy to generate
+    <section aria-labelledby="results-title">
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Output</p>
+          <h2 id="results-title" className="mt-1 text-xl font-semibold text-textPrimary">Compiled prompts</h2>
+        </div>
+        <span className="rounded-full bg-surface px-3 py-1 text-xs font-medium text-textMuted shadow-card">
+          {results.length} platforms
         </span>
       </div>
-      <div className="grid gap-4 sm:grid-cols-1">
-        {results.map((r) => (
-          <ReceiptCard key={r.platform} result={r} onCopied={onCopy} />
+      <div className="space-y-4">
+        {results.map((result) => (
+          <PromptCard key={result.platform} result={result} onCopied={onCopy} />
         ))}
       </div>
-    </div>
+    </section>
   );
 }

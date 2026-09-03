@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Clapperboard, ImageIcon, Plus, Sparkles } from "lucide-react";
 import {
   Domain,
   EMPTY_SPEC,
@@ -101,6 +102,9 @@ export default function Home() {
   };
 
   const startNewSpec = () => {
+    if (!currentSpecEmpty && !window.confirm("Start a new spec? Your current brief and refinement answers will be cleared.")) {
+      return;
+    }
     if (domain === "image") setImageSpec(EMPTY_SPEC);
     else setVideoSpec(EMPTY_VIDEO_SPEC);
     setQa((p) => ({ ...p, [domain]: EMPTY_QA }));
@@ -208,153 +212,160 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen px-4 py-10 sm:py-14 lg:py-20">
-      <div className="max-w-2xl mx-auto">
-        <header className="mb-10">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-inkFaint">
-              Spec Compiler
+    <main className="min-h-screen bg-canvas">
+      <header className="sticky top-0 z-30 border-b border-borderUi bg-surface/95 backdrop-blur">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-white">
+              <Sparkles size={18} />
             </span>
-            <span className="h-px flex-1 bg-line" />
-            <span className="font-mono text-[10px] uppercase tracking-wide text-inkFaint">
-              BYOK · image + video
-            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-textPrimary">Spec Compiler</p>
+              <p className="hidden text-xs text-textMuted sm:block">Detailed briefs for image and video generation</p>
+            </div>
           </div>
-          <h1 className="font-display font-bold text-3xl sm:text-4xl text-ink leading-[1.1] tracking-tight">
-            Ask first. Spend once.
-          </h1>
-          <p className="font-body text-[15px] text-inkMuted mt-3 leading-relaxed max-w-lg">
-            Describe your idea. The AI pulls out the things in it and asks what
-            it needs about each, then writes one real prompt per platform — no
-            wasted credits on the wrong shape, length, or a missing detail.
-          </p>
-        </header>
 
-        <section className="mb-7">
-          <div className="flex gap-2 border-b border-line pb-3">
-            {(["image", "video"] as Domain[]).map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => switchDomain(d)}
-                className={`px-4 py-1.5 font-mono text-xs uppercase tracking-wide border rounded-sm transition-colors ${
-                  domain === d
-                    ? "bg-ink text-paperRaised border-ink shadow-card"
-                    : "bg-paperRaised text-inkMuted border-line hover:border-ink hover:text-ink"
-                }`}
-              >
-                {d === "image" ? "Image" : "Video"}
-              </button>
-            ))}
+          <div className="ml-auto flex items-center gap-3">
+            <div className="hidden items-center gap-1.5 text-xs font-medium text-textMuted md:flex">
+              <CheckCircle2 size={15} className="text-success" /> Saved locally
+            </div>
+            <div role="group" aria-label="Generation type" className="flex rounded-lg border border-borderUi bg-surfaceSubtle p-1">
+              {(["image", "video"] as Domain[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={domain === mode}
+                  onClick={() => switchDomain(mode)}
+                  className={`flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
+                    domain === mode
+                      ? "bg-surface text-primary shadow-card"
+                      : "text-textMuted hover:text-textPrimary"
+                  }`}
+                >
+                  {mode === "image" ? <ImageIcon size={16} /> : <Clapperboard size={16} />}
+                  <span className="hidden sm:inline">{mode === "image" ? "Image" : "Video"}</span>
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={startNewSpec}
               disabled={currentSpecEmpty}
-              className="ml-auto px-3 py-1.5 font-mono text-[10px] uppercase tracking-wide text-inkMuted border border-line rounded-sm hover:border-ink hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex min-h-10 items-center gap-2 rounded-lg border border-borderUi bg-surface px-3 text-sm font-semibold text-textSecondary hover:border-borderStrong hover:bg-surfaceSubtle disabled:cursor-not-allowed disabled:opacity-40"
             >
-              new spec
+              <Plus size={16} /> <span className="hidden sm:inline">New spec</span>
             </button>
           </div>
-          {domain === "video" && (
-            <p className="font-mono text-[10px] text-risk mt-2.5 flex items-center gap-1.5">
-              <span className="inline-block w-1 h-1 rounded-full bg-risk" />
-              video runs cost real credits — spec tightly
-            </p>
-          )}
-        </section>
+        </div>
+      </header>
 
-        <section className="mb-7">
-          {domain === "image" ? (
-            <QuestionFlow spec={imageSpec} onChange={setImageSpec} />
-          ) : (
-            <VideoQuestionFlow spec={videoSpec} onChange={setVideoSpec} />
-          )}
-        </section>
-
-        <section className="mb-7">
-          <ProviderKeyBar onConfigChange={setProviderConfig} />
-        </section>
-
-        <section className="mb-7">
-          <QuestionEngine
-            domain={domain}
-            idea={currentSpec.idea}
-            spec={currentSpec}
-            qa={currentQa}
-            onQaChange={setCurrentQa}
-            config={providerConfig}
-          />
-        </section>
-
-        <section className="mb-7">
-          <CompletenessMeter result={completeness} />
-        </section>
-
-        {completeness.hasIdea && !completeness.isComplete && !compileAnyway && (
-          <section className="mb-7 animate-fade-in">
-            <button
-              type="button"
-              onClick={() => setCompileAnyway(true)}
-              className="w-full py-2.5 font-mono text-xs uppercase tracking-wide border border-dashed border-risk text-risk rounded-sm hover:bg-riskSoft transition-colors"
-            >
-              Compile anyway — accepting {completeness.regenRisks} regen risk
-              {completeness.regenRisks === 1 ? "" : "s"}
-            </button>
-          </section>
-        )}
-
-        {canCompile && (!generated || stale) && (
-          <section className="mb-7">
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={composing}
-              className="w-full py-3 font-mono text-xs uppercase tracking-wide border border-ink bg-ink text-paperRaised rounded-sm hover:opacity-90 disabled:opacity-50 transition-opacity shadow-card flex items-center justify-center gap-2"
-            >
-              {composing
-                ? "writing your prompts…"
-                : generated
-                  ? "↻ Regenerate — inputs changed"
-                  : providerConfig && answeredCount(currentQa) > 0
-                    ? "Generate compiled prompts"
-                    : "Generate compiled prompts (add a key + answers for a polished write-up)"}
-            </button>
-            {genError && (
-              <p className="font-mono text-[11px] text-risk mt-2.5 px-1">
-                {genError}
-              </p>
-            )}
-          </section>
-        )}
-
-        {generated && (
-          <section className="mb-7 animate-fade-in">
-            <ResultsPanel results={generated.results} onCopy={handleCopy} />
-          </section>
-        )}
-
-        {pending.length > 0 && (
-          <section className="mb-7">
-            <OutcomeTracker
-              pending={pending}
-              onResolve={resolvePending}
-              onDismiss={dismissPending}
-            />
-          </section>
-        )}
-
-        {outcomes.length > 0 && (
-          <section className="mb-7">
-            <OutcomeStats outcomes={outcomes} onClear={handleClearLog} />
-          </section>
-        )}
-
-        <footer className="mt-16 pt-5 border-t border-line">
-          <p className="font-mono text-[11px] text-inkFaint leading-relaxed">
-            Entity-first AI questions (BYOK) · AI-composed prompts ·
-            deterministic platform layer · outcome log (local) · also an MCP
-            server (mcp/). See ROADMAP.md.
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <section className="mb-7 max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">{domain === "image" ? "Image workspace" : "Video workspace"}</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-textPrimary sm:text-4xl">
+            Turn an idea into a production-ready prompt.
+          </h1>
+          <p className="mt-3 max-w-2xl text-base leading-7 text-textSecondary">
+            Build the core brief, refine every important detail, then compile it for the platforms you use.
           </p>
+        </section>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-5">
+            {domain === "image" ? (
+              <QuestionFlow spec={imageSpec} onChange={setImageSpec} />
+            ) : (
+              <VideoQuestionFlow spec={videoSpec} onChange={setVideoSpec} />
+            )}
+
+            <QuestionEngine
+              domain={domain}
+              idea={currentSpec.idea}
+              spec={currentSpec}
+              qa={currentQa}
+              onQaChange={setCurrentQa}
+              config={providerConfig}
+            />
+          </div>
+
+          <aside className="space-y-5 lg:sticky lg:top-24">
+            <ProviderKeyBar onConfigChange={setProviderConfig} />
+
+            <section className="rounded-xl border border-borderUi bg-surface p-5 shadow-card" aria-labelledby="compile-title">
+              <h2 id="compile-title" className="text-lg font-semibold text-textPrimary">Review and compile</h2>
+              <div className="mt-4">
+                <CompletenessMeter result={completeness} />
+              </div>
+
+              <div className="mt-5 border-t border-borderUi pt-4">
+                <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+                  <span className="text-textSecondary">Composition</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${providerConfig && answeredCount(currentQa) > 0 ? "bg-primarySoft text-primary" : "bg-surfaceSubtle text-textMuted"}`}>
+                    {providerConfig && answeredCount(currentQa) > 0 ? "AI enhanced" : "Deterministic"}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={!canCompile || composing}
+                  className="flex min-h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primaryHover disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {composing ? "Compiling prompts..." : generated && stale ? "Update prompts" : "Compile prompts"}
+                </button>
+
+                {completeness.hasIdea && !completeness.isComplete && !compileAnyway && (
+                  <button
+                    type="button"
+                    onClick={() => setCompileAnyway(true)}
+                    className="mt-2 min-h-10 w-full rounded-lg px-3 text-sm font-medium text-warning hover:bg-warningSoft"
+                  >
+                    Compile with missing details
+                  </button>
+                )}
+
+                {compileAnyway && !completeness.isComplete && (
+                  <p className="mt-3 rounded-lg bg-warningSoft px-3 py-2 text-xs leading-5 text-warning">
+                    You accepted {completeness.regenRisks} missing detail{completeness.regenRisks === 1 ? "" : "s"}. The result may need more retries.
+                  </p>
+                )}
+
+                {genError && (
+                  <p role="alert" className="mt-3 rounded-lg border border-danger/20 bg-dangerSoft px-3 py-2.5 text-sm text-danger">
+                    {genError}
+                  </p>
+                )}
+              </div>
+            </section>
+          </aside>
+
+          {generated && (
+            <div className="lg:col-span-2 animate-fade-in">
+              {stale && (
+                <div className="mb-4 rounded-lg border border-warning/20 bg-warningSoft px-4 py-3 text-sm text-warning">
+                  The brief changed after these prompts were compiled. Update them before copying.
+                </div>
+              )}
+              <ResultsPanel results={generated.results} onCopy={handleCopy} />
+            </div>
+          )}
+
+          {pending.length > 0 && (
+            <div className="lg:col-span-2">
+              <OutcomeTracker pending={pending} onResolve={resolvePending} onDismiss={dismissPending} />
+            </div>
+          )}
+
+          {outcomes.length > 0 && (
+            <div className="lg:col-span-2">
+              <OutcomeStats outcomes={outcomes} onClear={handleClearLog} />
+            </div>
+          )}
+        </div>
+
+        <footer className="mt-10 flex flex-col gap-2 border-t border-borderUi py-6 text-sm text-textMuted sm:flex-row sm:items-center sm:justify-between">
+          <span>Specifications and outcome history are stored in this browser.</span>
+          <span className="font-mono text-xs">Web app + MCP server</span>
         </footer>
       </div>
     </main>

@@ -1,9 +1,5 @@
 "use client";
 
-// The one honest stat screen. No dashboard — just the comparison the
-// whole product is betting on: do complete specs waste fewer runs than
-// incomplete ones?
-
 import { OutcomeRecord, summarizeOutcomes, Bucket } from "@/lib/outcomes";
 
 interface Props {
@@ -14,68 +10,41 @@ interface Props {
 const MIN_SAMPLE = 5;
 
 function fmt(bucket: Bucket): string {
-  if (bucket.n === 0) return "no data yet";
-  const avg = bucket.avgRegens!.toFixed(1);
-  const rate = Math.round(bucket.firstTryRate! * 100);
-  return `avg ${avg} regens · ${rate}% first try (n=${bucket.n})`;
+  if (bucket.n === 0) return "No data yet";
+  return `${bucket.avgRegens!.toFixed(1)} avg retries, ${Math.round(bucket.firstTryRate! * 100)}% first try, n=${bucket.n}`;
 }
 
 export default function OutcomeStats({ outcomes, onClear }: Props) {
   if (outcomes.length === 0) return null;
-
-  const s = summarizeOutcomes(outcomes);
-  const smallSample = s.complete.n < MIN_SAMPLE || s.incomplete.n < MIN_SAMPLE;
+  const summary = summarizeOutcomes(outcomes);
+  const smallSample = summary.complete.n < MIN_SAMPLE || summary.incomplete.n < MIN_SAMPLE;
 
   return (
-    <div className="border border-line rounded-sm bg-paperRaised p-4">
-      <div className="flex items-center justify-between mb-3">
-        <span className="font-mono text-xs uppercase tracking-wide text-inkMuted">
-          The hypothesis — {s.total} outcome{s.total === 1 ? "" : "s"} logged
-        </span>
-        <button
-          type="button"
-          onClick={onClear}
-          className="font-mono text-[10px] text-inkMuted hover:text-risk transition-colors"
-        >
-          clear log
+    <details className="rounded-xl border border-borderUi bg-surface shadow-card">
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-textPrimary sm:px-6">
+        Insights from {summary.total} logged outcome{summary.total === 1 ? "" : "s"}
+      </summary>
+      <div className="border-t border-borderUi px-5 py-5 sm:px-6">
+        <p className="text-sm text-textSecondary">Do complete specifications need fewer retries?</p>
+        <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg bg-successSoft p-4">
+            <dt className="text-sm font-semibold text-success">Complete specs</dt>
+            <dd className="mt-1 text-sm text-textPrimary">{fmt(summary.complete)}</dd>
+          </div>
+          <div className="rounded-lg bg-warningSoft p-4">
+            <dt className="text-sm font-semibold text-warning">Incomplete specs</dt>
+            <dd className="mt-1 text-sm text-textPrimary">{fmt(summary.incomplete)}</dd>
+          </div>
+        </dl>
+        {smallSample && (
+          <p className="mt-3 text-xs leading-5 text-textMuted">
+            Small sample. Aim for at least {MIN_SAMPLE} outcomes in each group before drawing conclusions.
+          </p>
+        )}
+        <button type="button" onClick={onClear} className="mt-4 min-h-10 rounded-lg px-3 text-sm font-medium text-textMuted hover:bg-dangerSoft hover:text-danger">
+          Clear outcome history
         </button>
       </div>
-
-      <p className="font-body text-xs text-inkMuted mb-3">
-        Do fully-answered specs actually waste fewer runs?
-      </p>
-
-      <ul className="space-y-1.5 font-mono text-xs">
-        <li className="flex justify-between gap-4">
-          <span className="text-safe">complete specs</span>
-          <span className="text-ink text-right">{fmt(s.complete)}</span>
-        </li>
-        <li className="flex justify-between gap-4">
-          <span className="text-risk">incomplete specs</span>
-          <span className="text-ink text-right">{fmt(s.incomplete)}</span>
-        </li>
-        {s.assisted.n > 0 && (
-          <li className="flex justify-between gap-4">
-            <span className="text-inkMuted">AI-assisted specs</span>
-            <span className="text-ink text-right">{fmt(s.assisted)}</span>
-          </li>
-        )}
-        {s.abandoned > 0 && (
-          <li className="flex justify-between gap-4">
-            <span className="text-inkMuted">abandoned runs</span>
-            <span className="text-ink text-right">
-              {s.abandoned} (excluded from averages)
-            </span>
-          </li>
-        )}
-      </ul>
-
-      {smallSample && (
-        <p className="font-mono text-[10px] text-inkMuted mt-3">
-          small sample — keep logging before drawing conclusions (want n≥
-          {MIN_SAMPLE} in both buckets)
-        </p>
-      )}
-    </div>
+    </details>
   );
 }

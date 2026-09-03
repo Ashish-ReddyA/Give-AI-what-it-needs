@@ -131,6 +131,7 @@ export default function QuestionEngine({
 }: Props) {
   const [busyEntities, setBusyEntities] = useState(false);
   const [loading, setLoading] = useState<Set<string>>(new Set());
+  const [deepening, setDeepening] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   // Entities whose questions are loaded or in flight — prevents a second
@@ -199,6 +200,48 @@ export default function QuestionEngine({
       });
     } finally {
       setLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(entity.id);
+        return next;
+      });
+    }
+  };
+
+  // Fetch a deeper round of questions for an open entity: finer-grained
+  // sub-attributes (fabric and fit, motion arc, ambient detail). Merges the
+  // new questions into the existing ones, dropping any that paraphrase-repeat
+  // questions already shown. This is the "More detail" button.
+  const deepenEntity = async (entity: Entity) => {
+    if (!config || deepening.has(entity.id)) return;
+    setDeepening((prev) => new Set(prev).add(entity.id));
+    setError(null);
+    try {
+      const { generateEntityQuestions } = await import("@/lib/analyze");
+      const more = await generateEntityQuestions(
+        domain,
+        idea,
+        entity,
+        buildAnswered(domain, spec, qa),
+        askedQuestions(qa),
+        optsOf(config),
+        "deep"
+      );
+      onQaChange((prev) => {
+        const existing = prev.entityQuestions[entity.id] ?? [];
+        // Merge: keep existing, append only questions whose id isn't already
+        // present. The dedup against alreadyAsked already ran in analyze.ts,
+        // so `more` excludes paraphrases of the existing questions.
+        const existingIds = new Set(existing.map((q) => q.id));
+        const merged = [...existing, ...more.filter((q) => !existingIds.has(q.id))];
+        return {
+          ...prev,
+          entityQuestions: { ...prev.entityQuestions, [entity.id]: merged },
+        };
+      });
+    } catch (e) {
+      setError(friendly(e));
+    } finally {
+      setDeepening((prev) => {
         const next = new Set(prev);
         next.delete(entity.id);
         return next;
@@ -330,6 +373,20 @@ export default function QuestionEngine({
                           onAnswer={(v) => setAnswer(q.id, v)}
                         />
                       ))}
+                      <button
+                        type="button"
+                        onClick={() => deepenEntity(entity)}
+                        disabled={deepening.has(entity.id)}
+                        className="w-full mt-1 py-1.5 font-mono text-[10px] uppercase tracking-wide text-inkMuted border border-dashed border-line rounded-sm hover:border-ink hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        {deepening.has(entity.id) ? (
+                          <>
+                            <Loader2 size={11} className="animate-spin" /> digging deeper…
+                          </>
+                        ) : (
+                          <>+ more detail</>
+                        )}
+                      </button>
                     </div>
                   )}
                   {isOpen && !isLoading && qs.length === 0 && (

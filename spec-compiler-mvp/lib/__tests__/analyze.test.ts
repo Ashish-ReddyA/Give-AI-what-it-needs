@@ -466,6 +466,122 @@ describe("question dedup — the girl/coin repeat bug", () => {
   });
 });
 
+describe("question thoroughness — the missing-top bug", () => {
+  // The user asked about "a girl walking in the forest." The model asked about
+  // the skirt (bottom) but never the top — a weak model read "cover its
+  // appearance" narrowly and skipped an aspect. The fix hands the model an
+  // explicit completeness checklist per entity kind so nothing is silent. This
+  // test verifies the PERSON checklist is sent and that the prompt demands every
+  // aspect be covered.
+  function capture(response: unknown, captured: Captured[]): typeof fetch {
+    return async (_url, init) => {
+      captured.push({
+        url: String(_url),
+        headers: new Headers(init?.headers as HeadersInit),
+        body: JSON.parse(String(init?.body)),
+      });
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+  }
+
+  it("sends the person completeness checklist (hair, top, bottom, footwear, ...)", async () => {
+    const captured: Captured[] = [];
+    await generateEntityQuestions(
+      "image",
+      "a girl walking in the forest",
+      { id: "girl", label: "Girl" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: capture({ text: JSON.stringify({ questions: [] }) }, captured),
+      }
+    );
+    const system = String(captured[0].body.system);
+    // The checklist must explicitly demand BOTH top and bottom clothing so a
+    // weak model can't skip the top while covering the skirt.
+    expect(system).toMatch(/top clothing/i);
+    expect(system).toMatch(/bottom clothing/i);
+    expect(system).toMatch(/hair/i);
+    expect(system).toMatch(/footwear/i);
+    expect(system).toMatch(/facial expression/i);
+    // The exhaustiveness instruction must be present.
+    expect(system).toMatch(/do not skip any aspect/i);
+  });
+
+  it("a place entity gets the place checklist, not the person one", async () => {
+    const captured: Captured[] = [];
+    await generateEntityQuestions(
+      "image",
+      "a girl walking in the forest",
+      { id: "forest", label: "Forest" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: capture({ text: JSON.stringify({ questions: [] }) }, captured),
+      }
+    );
+    const system = String(captured[0].body.system);
+    expect(system).toMatch(/what is in it/i);
+    expect(system).toMatch(/lighting/i);
+    // Should NOT carry the person clothing checklist.
+    expect(system).not.toMatch(/top clothing/i);
+  });
+
+  it("deep depth requests more questions and finer sub-attributes", async () => {
+    const captured: Captured[] = [];
+    await generateEntityQuestions(
+      "video",
+      "a girl walking in the forest",
+      { id: "girl", label: "Girl" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: capture({ text: JSON.stringify({ questions: [] }) }, captured),
+      },
+      "deep"
+    );
+    const system = String(captured[0].body.system);
+    // Deep asks for more questions and for finer sub-attributes like fabric fit
+    // and the exact arc of motion (video-specific).
+    expect(system).toMatch(/5 to 10/);
+    expect(system).toMatch(/fabric and fit/i);
+    expect(system).toMatch(/arc of (?:their )?motion/i);
+  });
+
+  it("image domain deep depth drops video-only sub-attributes", async () => {
+    const captured: Captured[] = [];
+    await generateEntityQuestions(
+      "image",
+      "a girl walking in the forest",
+      { id: "girl", label: "Girl" },
+      {},
+      [],
+      {
+        providerId: "openai",
+        apiKey: "k",
+        model: "gpt-4o-mini",
+        fetch: capture({ text: JSON.stringify({ questions: [] }) }, captured),
+      },
+      "deep"
+    );
+    const system = String(captured[0].body.system);
+    // A still image has no motion arc — that deep extra must be stripped.
+    expect(system).not.toMatch(/arc of (?:their )?motion/i);
+  });
+});
+
 describe("composeScene", () => {
   it("returns the AI-written prose prompt (proxy path)", async () => {
     const captured: Captured[] = [];

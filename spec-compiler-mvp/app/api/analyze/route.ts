@@ -22,6 +22,9 @@ interface ProxyBody {
   system?: string;
   user?: string;
   baseUrl?: string;
+  /** Optional max_tokens override; deep question generation sends a higher
+   * value so the structured JSON isn't truncated. Clamped server-side. */
+  maxTokens?: number;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -42,7 +45,7 @@ export async function POST(req: Request): Promise<Response> {
     return json({ error: "Invalid request body." }, 400);
   }
 
-  const { provider: providerId, model, system, user, baseUrl: customBaseUrl } = body;
+  const { provider: providerId, model, system, user, baseUrl: customBaseUrl, maxTokens } = body;
   const provider = providerId ? PROVIDERS[providerId] : undefined;
 
   if (!provider || provider.kind !== "openai-compat") {
@@ -61,6 +64,10 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  // Clamp max_tokens to a safe range. Default 1024; deep question generation
+  // requests more, but never above 4096 to protect the upstream call.
+  const tokens = Math.min(Math.max(Math.floor(maxTokens ?? 1024), 256), 4096);
+
   let upstream: Response;
   try {
     upstream = await fetch(`${base}/chat/completions`, {
@@ -72,7 +79,7 @@ export async function POST(req: Request): Promise<Response> {
       body: JSON.stringify({
         model,
         temperature: 0,
-        max_tokens: 1024,
+        max_tokens: tokens,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: system },

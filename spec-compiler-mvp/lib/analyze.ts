@@ -62,15 +62,147 @@ Return 3 to 7 elements, main subject first and "Scene" last, each with a short s
 ${GROUNDING}`;
 }
 
-function entityQuestionsSystem(domain: Domain, label: string): string {
+// Explicit completeness checklists per entity KIND. This is what makes a weak
+// model thorough: instead of "cover its appearance" (which a small model
+// interprets narrowly and skips aspects — the user's bug: asked about the skirt
+// but not the top), we hand the model a concrete list of EVERY aspect to cover
+// for that kind of thing. A weak model follows the list and asks about the top
+// because the list says to. The list is the scaffolding; the model fills values.
+//
+// Each checklist is written so the aspects are mutually distinct (no two ask
+// the same thing) and exhaustive for that kind, so nothing important is silent.
+const PERSON_CHECKLIST = [
+  "hair (style, length, color)",
+  "top clothing (shirt, jacket, sweater — what is on the upper body)",
+  "bottom clothing (pants, skirt, shorts — what is on the lower body)",
+  "footwear (shoes, boots, barefoot)",
+  "accessories (bag, jewelry, glasses, hat)",
+  "pose and posture (standing, walking, sitting, leaning)",
+  "facial expression and where they are looking",
+  "what they are doing (the action, if any)",
+  "age range and build",
+];
+const PLACE_CHECKLIST = [
+  "what is in it (furniture, plants, objects the idea names or implies)",
+  "lighting (source, direction, warmth)",
+  "time of day and weather if outdoors",
+  "color palette and materials of the surfaces",
+  "depth and scale (tight interior, wide landscape)",
+  "atmosphere (busy, empty, calm, tense)",
+];
+const DRINK_CHECKLIST = [
+  "the vessel (cup, glass, mug — material and color)",
+  "state (still, being poured, steaming, splashing)",
+  "color and opacity of the liquid",
+  "foam, layering, or surface detail",
+  "what it is being poured from, if pouring",
+];
+const OBJECT_CHECKLIST = [
+  "size (relative to a hand or the scene)",
+  "color and material",
+  "texture and finish (matte, glossy, worn)",
+  "state (new, aged, damaged, open, closed)",
+  "orientation and where it rests",
+];
+const SCENE_CHECKLIST = [
+  "overall mood and emotional tone",
+  "lighting (quality, direction, color temperature)",
+  "time of day",
+  "weather or atmosphere (if relevant)",
+  "color palette of the whole frame",
+  "for video: how the moment unfolds and the pacing of motion",
+];
+
+// Map an entity label to its kind so we pick the right checklist. Falls back
+// to object for anything unrecognized. Crude but reliable for weak models.
+function checklistFor(label: string): string[] {
+  const l = label.toLowerCase();
+  if (l === "scene") return SCENE_CHECKLIST;
+  if (/(barista|girl|boy|woman|man|person|child|kid|lady|guy|portrait|figure|character|chef|worker|dancer)/.test(l)) return PERSON_CHECKLIST;
+  if (/(cafe|forest|room|street|beach|mountain|field|garden|kitchen|office|city|landscape|interior|alley|park|shop|bar|restaurant|library)/.test(l)) return PLACE_CHECKLIST;
+  if (/(latte|coffee|tea|drink|juice|wine|beer|water|soup|sauce|milk|cocktail)/.test(l)) return DRINK_CHECKLIST;
+  return OBJECT_CHECKLIST;
+}
+
+function renderChecklist(items: string[]): string {
+  return items.map((it) => `  - ${it}`).join("\n");
+}
+
+/** Depth of questioning. "standard" = the completeness checklist (thorough).
+ * "deep" = even more fine-grained sub-attributes, used by the More-detail button. */
+export type QuestionDepth = "standard" | "deep";
+
+const DEEP_EXTRA: Record<string, string[]> = {
+  person: [
+    "fabric and fit of each clothing item (loose, fitted, flowing)",
+    "how the clothing moves while they act (for video)",
+    "fine facial features (eye color, jaw, skin tone)",
+    "gaze direction and micro-expression",
+    "the exact arc of their motion (for video: entry, peak, exit)",
+  ],
+  place: [
+    "where the camera sits in the space (for video: does it move?)",
+    "background vs foreground detail levels",
+    "sound-implying motion (leaves rustling, steam, footsteps) for video",
+    "edge of frame — what is just outside it",
+  ],
+  drink: [
+    "the exact pour trajectory and splash detail (for video)",
+    "condensation or steam behavior over time (for video)",
+    "refraction and how light passes through the liquid",
+  ],
+  object: [
+    "wear patterns, nicks, patina, engraving",
+    "how it catches or reflects the light",
+    "for video: does it move, spin, fall, or stay still",
+  ],
+  scene: [
+    "shot-to-shot rhythm and how long each beat holds (video)",
+    "transitions and how motion carries between them",
+    "the single most important moment in the clip",
+    "ambient motion that sells the mood (drifting dust, swaying branches)",
+  ],
+};
+
+function deepExtrasFor(label: string, domain: Domain): string[] {
+  const l = label.toLowerCase();
+  let kind = "object";
+  if (l === "scene") kind = "scene";
+  else if (/(barista|girl|boy|woman|man|person|child|kid|lady|guy|portrait|figure|character|chef|worker|dancer)/.test(l)) kind = "person";
+  else if (/(cafe|forest|room|street|beach|mountain|field|garden|kitchen|office|city|landscape|interior|alley|park|shop|bar|restaurant|library)/.test(l)) kind = "place";
+  else if (/(latte|coffee|tea|drink|juice|wine|beer|water|soup|sauce|milk|cocktail)/.test(l)) kind = "drink";
+  const extras = DEEP_EXTRA[kind] ?? DEEP_EXTRA.object;
+  // For image domain, drop the video-only deep extras so we don't ask about
+  // motion in a still.
+  if (domain === "image") return extras.filter((e) => !/video|motion|pour trajectory|splash|steam over time|shot-to-shot|transitions|ambient motion|drifting|swaying|how .* moves?/.test(e));
+  return extras;
+}
+
+function entityQuestionsSystem(
+  domain: Domain,
+  label: string,
+  depth: QuestionDepth = "standard"
+): string {
   const medium = domain === "video" ? "video clip" : "image";
   const scene = label.toLowerCase() === "scene";
+  const checklist = checklistFor(label);
+  const baseCount = depth === "deep" ? "5 to 10" : "4 to 8";
+  // The completeness list is the core of the thoroughness fix. Tell the model
+  // to ask ONE question per checklist aspect it hasn't already covered, so a
+  // weak model doesn't skip anything (the "asked about the skirt, not the top"
+  // bug). Standard depth already covers every aspect; deep adds sub-attributes.
+  const checklistText =
+    depth === "deep"
+      ? `${renderChecklist(checklist)}\n  AND these finer sub-attributes:\n${renderChecklist(deepExtrasFor(label, domain))}`
+      : renderChecklist(checklist);
   const focus = scene
-    ? `Ask about overall mood, lighting, time of day, weather/atmosphere, and color palette — but only variations that fit the idea as written. If the idea already names the time of day or weather (e.g. "sunrise"), ask about its quality or intensity, do not re-ask whether it is sunrise or dusk.`
-    : `Cover ONLY the "${label}" itself: its appearance (color, material, texture, size) and — when it applies and is consistent with the idea — its own state or action (for a person: their pose, what they are doing, what they are wearing; for a drink: whether it is in a cup or being poured; for a place: what is in it as the idea describes). Ask about the "${label}" as a thing in itself, not about other entities' attributes — a question about another entity belongs on that entity's card, not here. Only raise these if the idea actually contains that entity.`;
-  return `The user is specifying the "${label}" in their AI-generated ${medium}. Ask 3 to 6 detailed questions about ONLY "${label}", each grounded in the idea. ${focus}
+    ? `Cover EACH of these scene aspects (ask one question per aspect unless the idea already settled it):\n${checklistText}`
+    : `Cover the "${label}" as a thing in itself, asking ONE question per aspect below — do NOT skip any aspect the idea has not already settled. A question about another entity belongs on that entity's card, not here. Aspects:\n${checklistText}`;
+  return `The user is specifying the "${label}" in their AI-generated ${medium}. Ask ${baseCount} detailed questions about ONLY "${label}", each grounded in the idea. ${focus}
 
-For an attribute where several values can sensibly co-exist (traits, clothing, colors, objects present in the idea), set "multi": true so the user can pick more than one. For a mutually-exclusive choice (a single pose, one time of day), set "multi": false. Order by impact.
+CRITICAL: be exhaustive across the aspects above. Do not collapse two aspects into one question and do not skip an aspect because you think it is minor — the user decides what is minor by leaving it blank. If the idea already states an aspect (e.g. "walking"), still ask about its specifics (gait, speed, direction) rather than skipping it, unless it is fully pinned.
+
+For an attribute where several values can sensibly co-exist (traits, clothing items, colors), set "multi": true so the user can pick more than one. For a mutually-exclusive choice (a single pose, one time of day), set "multi": false. Order by impact, but cover every aspect.
 
 ${GROUNDING}
 
@@ -138,7 +270,8 @@ async function runStructured(
   jsonContract: string,
   content: string,
   anthropicSchema: z.ZodType,
-  opts: AnalyzeOptions
+  opts: AnalyzeOptions,
+  maxTokens = 1500
 ): Promise<Record<string, unknown>> {
   const provider = PROVIDERS[opts.providerId];
 
@@ -146,7 +279,7 @@ async function runStructured(
     const client = anthropicClient(opts);
     const message = await client.messages.parse({
       model: "claude-opus-4-8",
-      max_tokens: 1500,
+      max_tokens: maxTokens,
       temperature: 0,
       system,
       messages: [{ role: "user", content }],
@@ -170,6 +303,7 @@ async function runStructured(
       baseUrl: opts.baseUrl,
       system: system + jsonContract,
       user: content,
+      maxTokens,
     }),
   });
   const data = (await resp.json()) as { text?: string; error?: string };
@@ -426,7 +560,8 @@ export async function generateEntityQuestions(
   entity: Entity,
   answered: Record<string, string>,
   alreadyAsked: string[],
-  opts: AnalyzeOptions
+  opts: AnalyzeOptions,
+  depth: QuestionDepth = "standard"
 ): Promise<Question[]> {
   const content = JSON.stringify({
     idea: idea.trim(),
@@ -434,11 +569,12 @@ export async function generateEntityQuestions(
     alreadyAsked,
   });
   const obj = await runStructured(
-    entityQuestionsSystem(domain, entity.label),
+    entityQuestionsSystem(domain, entity.label, depth),
     QUESTIONS_CONTRACT,
     content,
     QuestionsSchema,
-    opts
+    opts,
+    depth === "deep" ? 2500 : 1500
   );
   // Canonicalize the already-asked list once, then filter the new questions
   // against it so a paraphrase repeat (e.g. "What is the size of the coin?"

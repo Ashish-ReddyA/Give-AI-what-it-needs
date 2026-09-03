@@ -16,12 +16,19 @@ The critique that produced it and the four locked product decisions are in
 [`../DESIGN.md`](../DESIGN.md); the phase plan is in
 [`../ROADMAP.md`](../ROADMAP.md).
 
+> **v0.3.0 — grounding fix.** The question engine now stays anchored to the
+> user's idea. If the idea mentions no animal, it will not ask about or
+> suggest one (this was a real bug: "a cafe at sunrise" produced "is it a
+> cat or a dog?"). A grounding rail was added to every prompt plus a
+> deterministic backstop that drops stock-animal options unrelated to the
+> idea. 3 regression tests lock it down.
+
 ## Run it
 
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 32 unit tests on the pure-function core
+npm test         # 90 unit + integration tests
 npm run lint     # next/core-web-vitals
 npm run build    # static production build
 ```

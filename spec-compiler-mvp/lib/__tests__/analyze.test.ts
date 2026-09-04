@@ -121,7 +121,7 @@ describe("generateEntityQuestions", () => {
           {
             text: JSON.stringify({
               questions: [
-                { id: "traits", aspectId: "appearance", question: "Barista traits?", options: ["young adult", "female"], multi: true },
+                { id: "traits", aspectId: "age_range", question: "What age range should the barista have?", options: ["young adult", "middle-aged"], multi: false },
                 { id: "pose", aspectId: "pose_posture", question: "Pose?", options: ["pouring"], multi: false },
                 { question: "" }, // dropped
               ],
@@ -131,11 +131,11 @@ describe("generateEntityQuestions", () => {
         ),
       }
     );
-    expect(questions).toHaveLength(9); // every person blueprint aspect is covered
-    const appearance = questions.find((q) => q.aspectId === "appearance");
+    expect(questions).toHaveLength(13); // every person blueprint aspect is covered
+    const age = questions.find((q) => q.aspectId === "age_range");
     const pose = questions.find((q) => q.aspectId === "pose_posture");
-    expect(appearance?.id).toBe("barista_traits");
-    expect(appearance?.multi).toBe(true);
+    expect(age?.id).toBe("barista_traits");
+    expect(age?.multi).toBe(false);
     expect(pose?.multi).toBe(false);
 
     const r = captured[0];
@@ -514,14 +514,20 @@ describe("question thoroughness — the missing-top bug", () => {
     const system = String(captured[0].body.system);
     // The blueprint must explicitly demand BOTH top and bottom clothing so a
     // weak model cannot skip the top while covering the skirt.
+    expect(system).toMatch(/aspectId "skin_complexion"/i);
+    expect(system).toMatch(/aspectId "eyes"/i);
+    expect(system).toMatch(/aspectId "facial_features"/i);
     expect(system).toMatch(/aspectId "top_clothing"/i);
     expect(system).toMatch(/aspectId "bottom_clothing"/i);
     expect(system).toMatch(/aspectId "hair"/i);
     expect(system).toMatch(/aspectId "footwear"/i);
     expect(system).toMatch(/aspectId "expression_gaze"/i);
     // Empty/malformed model output is backfilled deterministically.
-    expect(generated).toHaveLength(9);
+    expect(generated).toHaveLength(13);
     expect(generated.find((q) => q.aspectId === "top_clothing")?.question).toMatch(/upper body/i);
+    expect(generated.find((q) => q.aspectId === "skin_complexion")?.question).toMatch(/skin tone/i);
+    expect(generated.find((q) => q.aspectId === "eyes")?.question).toMatch(/eyes/i);
+    expect(generated.find((q) => q.aspectId === "facial_features")?.question).toMatch(/facial features/i);
   });
 
   it("a place entity gets the place checklist, not the person one", async () => {

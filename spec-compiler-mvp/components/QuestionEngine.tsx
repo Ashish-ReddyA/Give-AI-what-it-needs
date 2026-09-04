@@ -18,6 +18,7 @@ import {
   answeredCount,
   askedQuestions,
 } from "@/lib/questions";
+import { getAspectBlueprints } from "@/lib/question-blueprints";
 
 interface Props {
   domain: Domain;
@@ -205,12 +206,26 @@ export default function QuestionEngine({
     }
   };
 
+  const hasDeepQuestions = (entity: Entity, state: QAState = qa) => {
+    const deepIds = new Set(
+      getAspectBlueprints(entity, domain, "deep").map((aspect) => aspect.id)
+    );
+    return (state.entityQuestions[entity.id] ?? []).some(
+      (question) => question.aspectId && deepIds.has(question.aspectId)
+    );
+  };
+
   // Fetch a deeper round of questions for an open entity: finer-grained
   // sub-attributes (fabric and fit, motion arc, ambient detail). Merges the
   // new questions into the existing ones, dropping any that paraphrase-repeat
   // questions already shown. This is the "More detail" button.
   const deepenEntity = async (entity: Entity) => {
-    if (!config || deepening.has(entity.id) || deepened.has(entity.id)) return;
+    if (
+      !config ||
+      deepening.has(entity.id) ||
+      deepened.has(entity.id) ||
+      hasDeepQuestions(entity)
+    ) return;
     setDeepening((prev) => new Set(prev).add(entity.id));
     setError(null);
     try {
@@ -341,6 +356,7 @@ export default function QuestionEngine({
               const answeredHere = qs.filter((q) =>
                 (qa.answers[q.id] ?? "").trim()
               ).length;
+              const deepDone = deepened.has(entity.id) || hasDeepQuestions(entity);
               return (
                 <div
                   key={entity.id}
@@ -381,14 +397,14 @@ export default function QuestionEngine({
                       <button
                         type="button"
                         onClick={() => deepenEntity(entity)}
-                        disabled={deepening.has(entity.id) || deepened.has(entity.id)}
+                        disabled={deepening.has(entity.id) || deepDone}
                         className="mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-borderUi bg-surface px-4 text-sm font-semibold text-textSecondary hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {deepening.has(entity.id) ? (
                           <>
                             <Loader2 size={16} className="animate-spin" /> Generating advanced questions...
                           </>
-                        ) : deepened.has(entity.id) ? (
+                        ) : deepDone ? (
                           <>Advanced questions added</>
                         ) : (
                           <>Generate advanced questions</>

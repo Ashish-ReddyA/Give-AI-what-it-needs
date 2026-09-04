@@ -21,7 +21,8 @@ export interface KV {
   removeItem(key: string): void;
 }
 
-const STATE_KEY = "spec-compiler.state.v2";
+const STATE_KEY = "spec-compiler.state.v3";
+const LEGACY_STATE_KEY = "spec-compiler.state.v2";
 const OUTCOMES_KEY = "spec-compiler.outcomes.v1";
 const MAX_OUTCOMES = 500;
 
@@ -83,7 +84,13 @@ function sanitizeQuestion(raw: unknown): Question | null {
   const options = Array.isArray(r.options)
     ? r.options.filter((o): o is string => typeof o === "string")
     : [];
-  return { id: r.id, question: r.question, options, multi: r.multi === true };
+  return {
+    id: r.id,
+    aspectId: typeof r.aspectId === "string" ? r.aspectId : undefined,
+    question: r.question,
+    options,
+    multi: r.multi === true,
+  };
 }
 
 function sanitizeEntity(raw: unknown): Entity | null {
@@ -169,8 +176,13 @@ function sanitizeOutcome(raw: unknown): OutcomeRecord | null {
 export function loadPersistedState(kv: KV | null = defaultKV()): PersistedState | null {
   if (!kv) return null;
   let parsed: unknown;
+  let legacy = false;
   try {
-    const rawText = kv.getItem(STATE_KEY);
+    let rawText = kv.getItem(STATE_KEY);
+    if (!rawText) {
+      rawText = kv.getItem(LEGACY_STATE_KEY);
+      legacy = Boolean(rawText);
+    }
     if (!rawText) return null;
     parsed = JSON.parse(rawText);
   } catch {
@@ -187,10 +199,16 @@ export function loadPersistedState(kv: KV | null = defaultKV()): PersistedState 
     pending: Array.isArray(r.pending)
       ? r.pending.map(sanitizePending).filter((p): p is PendingCopy => p !== null)
       : [],
-    qa: {
-      image: sanitizeQA(qaRaw.image),
-      video: sanitizeQA(qaRaw.video),
-    },
+    // v2 question trees predate deterministic aspect IDs. Preserve the user's
+    // brief and settings, but clear that stale QA so the next analysis receives
+    // the exhaustive v3 person/place/object blueprints. Otherwise old cached
+    // questions survive deployments and make the fix look ineffective.
+    qa: legacy
+      ? { image: { ...EMPTY_QA }, video: { ...EMPTY_QA } }
+      : {
+          image: sanitizeQA(qaRaw.image),
+          video: sanitizeQA(qaRaw.video),
+        },
   };
 }
 
@@ -201,6 +219,7 @@ export function savePersistedState(
   if (!kv) return;
   try {
     kv.setItem(STATE_KEY, JSON.stringify(state));
+    kv.removeItem(LEGACY_STATE_KEY);
   } catch {
     // Quota/private-mode failures are non-fatal — the app keeps working in
     // memory; persistence just doesn't stick.

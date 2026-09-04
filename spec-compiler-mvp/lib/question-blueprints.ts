@@ -14,6 +14,27 @@ export interface AspectBlueprint {
 
 const personStandard: AspectBlueprint[] = [
   {
+    id: "skin_complexion",
+    description: "skin tone or complexion, undertone, and visible skin details",
+    question: (label) => `What skin tone, complexion, and visible skin details should ${label} have?`,
+    options: [],
+    multi: true,
+  },
+  {
+    id: "eyes",
+    description: "eye color, eye shape, catchlight, and fine gaze detail",
+    question: (label) => `How should ${label}'s eyes look, including color, shape, and catchlight?`,
+    options: [],
+    multi: true,
+  },
+  {
+    id: "facial_features",
+    description: "face shape, brows, nose, lips, distinguishing features, and grooming or makeup",
+    question: (label) => `Which facial features should define ${label}?`,
+    options: [],
+    multi: true,
+  },
+  {
     id: "hair",
     description: "hair style, length, texture, and color",
     question: (label) => `How should ${label}'s hair look?`,
@@ -70,10 +91,17 @@ const personStandard: AspectBlueprint[] = [
     multi: true,
   },
   {
-    id: "appearance",
-    description: "age range, build, and other visible physical traits",
-    question: (label) => `What visible age range and build should ${label} have?`,
-    options: ["young adult", "middle-aged", "slender", "athletic", "average build"],
+    id: "age_range",
+    description: "visible age range",
+    question: (label) => `What visible age range should ${label} have?`,
+    options: ["child", "teenager", "young adult", "middle-aged", "older adult"],
+    multi: false,
+  },
+  {
+    id: "body_build",
+    description: "height, body build, and visible proportions",
+    question: (label) => `What height, build, and proportions should ${label} have?`,
+    options: ["short", "tall", "slender", "athletic", "average build"],
     multi: true,
   },
 ];
@@ -87,10 +115,17 @@ const personDeepImage: AspectBlueprint[] = [
     multi: true,
   },
   {
-    id: "facial_detail",
-    description: "fine facial features, skin tone, eye detail, and micro-expression",
-    question: (label) => `Which fine facial details should define ${label}?`,
-    options: ["soft features", "defined jawline", "visible freckles", "tired eyes", "subtle tension"],
+    id: "grooming_makeup",
+    description: "makeup, grooming, facial hair, and small styling choices",
+    question: (label) => `What grooming, makeup, or small styling details should ${label} have?`,
+    options: ["natural look", "subtle makeup", "defined eye makeup", "weathered appearance", "no visible makeup"],
+    multi: true,
+  },
+  {
+    id: "micro_expression",
+    description: "small facial tension, blink state, mouth position, and emotional nuance",
+    question: (label) => `What micro-expression should ${label}'s face show in the key moment?`,
+    options: ["slight tension", "parted lips", "furrowed brow", "soft half-smile", "wide alert eyes"],
     multi: true,
   },
   {

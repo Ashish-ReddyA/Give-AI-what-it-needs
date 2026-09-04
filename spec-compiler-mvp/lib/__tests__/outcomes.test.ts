@@ -122,7 +122,7 @@ const baseState: PersistedState = {
     image: {
       entities: [{ id: "cat", label: "Cat" }],
       entityQuestions: {
-        cat: [{ id: "cat_fur", question: "Fur?", options: ["orange"], multi: true }],
+        cat: [{ id: "cat_fur", aspectId: "texture_finish", question: "Fur?", options: ["orange"], multi: true }],
       },
       answers: { cat_fur: "orange tabby, fluffy" },
     },
@@ -145,10 +145,21 @@ describe("persisted state", () => {
     expect(loadPersistedState(null)).toBeNull();
   });
 
+  it("migrates v2 by preserving the brief but clearing stale pre-blueprint questions", () => {
+    const kv = fakeKV();
+    kv.setItem("spec-compiler.state.v2", JSON.stringify(baseState));
+    const loaded = loadPersistedState(kv)!;
+    expect(loaded.imageSpec).toEqual(baseState.imageSpec);
+    expect(loaded.videoSpec).toEqual(baseState.videoSpec);
+    expect(loaded.pending).toEqual(baseState.pending);
+    expect(loaded.qa.image).toEqual(EMPTY_QA);
+    expect(loaded.qa.video).toEqual(EMPTY_QA);
+  });
+
   it("sanitizes tampered values field-by-field instead of crashing", () => {
     const kv = fakeKV();
     kv.setItem(
-      "spec-compiler.state.v2",
+      "spec-compiler.state.v3",
       JSON.stringify({
         domain: "audio", // invalid enum
         imageSpec: { idea: 42, style: "vaporwave", format: "landscape" },

@@ -15,10 +15,14 @@ describe("deterministic question blueprints", () => {
       "video",
       "standard"
     ).map((aspect) => aspect.id);
+    expect(ids).toContain("skin_complexion");
+    expect(ids).toContain("eyes");
+    expect(ids).toContain("facial_features");
     expect(ids).toContain("top_clothing");
     expect(ids).toContain("bottom_clothing");
     expect(ids).toContain("footwear");
     expect(ids).toContain("expression_gaze");
+    expect(ids).toHaveLength(13);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
